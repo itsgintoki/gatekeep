@@ -10,7 +10,6 @@ import {
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
-
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
   email: varchar("email", { length: 255 }).notNull().unique(),
@@ -97,7 +96,6 @@ export const accessLogs = pgTable(
   ]
 );
 
-
 export const usersRelations = relations(users, ({ many }) => ({
   notes: many(notes),
   webhooks: many(webhooks),
@@ -132,7 +130,6 @@ export const webhooksRelations = relations(webhooks, ({ one, many }) => ({
 export const refreshTokensRelations = relations(refreshTokens, ({ one }) => ({
   user: one(users, { fields: [refreshTokens.userId], references: [users.id] }),
 }));
-
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;

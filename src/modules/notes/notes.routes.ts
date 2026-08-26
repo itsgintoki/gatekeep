@@ -10,6 +10,7 @@ router.use(authenticate);
 router.post("/", NotesController.createNote);
 router.get("/", NotesController.listNotes);
 router.get("/:id", NotesController.getNote);
+router.post("/:id/decrypt", NotesController.decryptNote);
 router.patch("/:id", NotesController.updateNote);
 router.delete("/:id", NotesController.deleteNote);
 

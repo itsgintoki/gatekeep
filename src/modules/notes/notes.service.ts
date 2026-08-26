@@ -2,13 +2,23 @@ import { and, eq, isNull, desc } from "drizzle-orm";
 import { db } from "../../db/index";
 import { notes, attachments } from "../../db/schema";
 import { uploadBuffer, deleteAsset } from "../../lib/cloudinary";
+import { encryptText, decryptText } from "../../lib/crypto";
 import type { CreateNoteInput, UpdateNoteInput } from "./notes.validation";
 
 export async function createNote(userId: string, data: CreateNoteInput) {
+  const isEncrypted = Boolean(data.passphrase);
+  const content = data.passphrase ? encryptText(data.content, data.passphrase) : data.content;
+
   const [note] = await db
     .insert(notes)
-    .values({ userId, ...data })
+    .values({
+      userId,
+      title: data.title,
+      content,
+      isEncrypted,
+    })
     .returning();
+
   return note;
 }
 
@@ -52,22 +62,59 @@ export async function getNote(noteId: string, userId: string) {
   return note;
 }
 
+export async function decryptNote(noteId: string, userId: string, passphrase: string) {
+  const note = await getNote(noteId, userId);
+
+  if (!note.isEncrypted) {
+    return note;
+  }
+
+  const decryptedContent = decryptText(note.content, passphrase);
+
+  return {
+    ...note,
+    content: decryptedContent,
+  };
+}
+
 export async function updateNote(
   noteId: string,
   userId: string,
   data: UpdateNoteInput
 ) {
+  const existing = await db.query.notes.findFirst({
+    where: and(eq(notes.id, noteId), eq(notes.userId, userId), isNull(notes.deletedAt)),
+  });
+
+  if (!existing) {
+    throw Object.assign(new Error("Note not found"), { status: 404 });
+  }
+
+  let content = data.content !== undefined ? data.content : existing.content;
+  let isEncrypted = existing.isEncrypted;
+
+  if (data.passphrase) {
+    content = encryptText(content, data.passphrase);
+    isEncrypted = true;
+  } else if (data.content !== undefined && existing.isEncrypted) {
+    throw Object.assign(
+      new Error("Cannot update content of an encrypted note without providing a passphrase"),
+      { status: 400 }
+    );
+  }
+
   const [updated] = await db
     .update(notes)
-    .set(data)
+    .set({
+      title: data.title !== undefined ? data.title : existing.title,
+      content,
+      isEncrypted,
+    })
     .where(
       and(eq(notes.id, noteId), eq(notes.userId, userId), isNull(notes.deletedAt))
     )
     .returning();
 
-  if (!updated) {
-    throw Object.assign(new Error("Note not found"), { status: 404 });
-  }
   return updated;
 }
 

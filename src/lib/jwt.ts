@@ -13,7 +13,6 @@ export interface RefreshTokenPayload {
   jti: string;
 }
 
-
 export function signAccessToken(
   payload: Omit<AccessTokenPayload, "iat" | "exp">
 ): string {
@@ -46,7 +45,6 @@ export function signRefreshToken(userId: string): {
   return { token, jti, expiresAt: new Date(Date.now() + ttlMs) };
 }
 
-
 export function verifyAccessToken(token: string): AccessTokenPayload {
   const secret = process.env.JWT_ACCESS_SECRET;
   if (!secret) throw new Error("JWT_ACCESS_SECRET not set");
@@ -58,7 +56,6 @@ export function verifyRefreshToken(token: string): RefreshTokenPayload {
   if (!secret) throw new Error("JWT_REFRESH_SECRET not set");
   return jwt.verify(token, secret) as RefreshTokenPayload;
 }
-
 
 export function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");

@@ -6,6 +6,7 @@ import cookieParser from "cookie-parser";
 
 import authRouter from "./modules/auth/auth.routes";
 import notesRouter from "./modules/notes/notes.routes";
+import linksRouter from "./modules/links/links.routes";
 import { errorHandler } from "./middleware/errorHandler";
 
 export const app = express();
@@ -35,6 +36,7 @@ app.use(cookieParser());
 
 app.use("/auth", authRouter);
 app.use("/notes", notesRouter);
+app.use("/links", linksRouter);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });

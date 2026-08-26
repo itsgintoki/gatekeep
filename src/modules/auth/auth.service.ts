@@ -16,7 +16,6 @@ const ARGON2_OPTIONS: HashOptions = {
   parallelism: 4,
 };
 
-
 export async function signup(email: string, password: string) {
   const existing = await db.query.users.findFirst({
     where: eq(users.email, email.toLowerCase()),
@@ -40,12 +39,10 @@ export async function signup(email: string, password: string) {
   return { user: safeUser, ...tokenPair };
 }
 
-
 export async function login(email: string, password: string) {
   const user = await db.query.users.findFirst({
     where: eq(users.email, email.toLowerCase()),
   });
-
 
   if (!user) {
     await argon2.hash("dummy_constant_time_op", ARGON2_OPTIONS);
@@ -63,7 +60,6 @@ export async function login(email: string, password: string) {
     ...tokenPair,
   };
 }
-
 
 export async function refreshTokens_rotate(rawRefreshToken: string) {
   let payload: ReturnType<typeof verifyRefreshToken>;
@@ -102,7 +98,6 @@ export async function refreshTokens_rotate(rawRefreshToken: string) {
   return issueTokenPair(user.id, user.email);
 }
 
-
 export async function logout(rawRefreshToken: string) {
   const tokenHash = hashToken(rawRefreshToken);
   await db
@@ -110,7 +105,6 @@ export async function logout(rawRefreshToken: string) {
     .set({ isRevoked: true })
     .where(eq(refreshTokens.tokenHash, tokenHash));
 }
-
 
 async function issueTokenPair(userId: string, email: string) {
   const accessToken = signAccessToken({ sub: userId, email });

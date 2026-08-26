@@ -3,6 +3,7 @@ import * as NotesService from "./notes.service";
 import {
   createNoteSchema,
   updateNoteSchema,
+  decryptNoteSchema,
   listNotesQuerySchema,
 } from "./notes.validation";
 
@@ -32,6 +33,20 @@ export async function listNotes(req: Request, res: Response, next: NextFunction)
 export async function getNote(req: Request, res: Response, next: NextFunction) {
   try {
     const note = await NotesService.getNote(param(req.params.id), req.user!.id);
+    res.json(note);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function decryptNote(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { passphrase } = decryptNoteSchema.parse(req.body);
+    const note = await NotesService.decryptNote(
+      param(req.params.id),
+      req.user!.id,
+      passphrase
+    );
     res.json(note);
   } catch (err) {
     next(err);
