@@ -51,6 +51,18 @@ export const notes = pgTable("notes", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const attachments = pgTable("attachments", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  noteId: uuid("note_id")
+    .notNull()
+    .references(() => notes.id, { onDelete: "cascade" }),
+  url: text("url").notNull(),
+  cloudinaryPublicId: text("cloudinary_public_id").notNull(),
+  mimeType: varchar("mime_type", { length: 100 }).notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const links = pgTable("links", {
   id: uuid("id").defaultRandom().primaryKey(),
   noteId: uuid("note_id")
@@ -95,6 +107,11 @@ export const usersRelations = relations(users, ({ many }) => ({
 export const notesRelations = relations(notes, ({ one, many }) => ({
   user: one(users, { fields: [notes.userId], references: [users.id] }),
   links: many(links),
+  attachments: many(attachments),
+}));
+
+export const attachmentsRelations = relations(attachments, ({ one }) => ({
+  note: one(notes, { fields: [attachments.noteId], references: [notes.id] }),
 }));
 
 export const linksRelations = relations(links, ({ one, many }) => ({
@@ -126,3 +143,5 @@ export type NewLink = typeof links.$inferInsert;
 export type AccessLog = typeof accessLogs.$inferSelect;
 export type Webhook = typeof webhooks.$inferSelect;
 export type RefreshToken = typeof refreshTokens.$inferSelect;
+export type Attachment = typeof attachments.$inferSelect;
+export type NewAttachment = typeof attachments.$inferInsert;

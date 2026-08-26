@@ -6,15 +6,20 @@ dist/
 
 # Environment
 .env
-.env.local
+.env.*
+!.env.example
 
-# Drizzle migrations (commit these, but ignore local temp files)
+# Drizzle
 drizzle/.snapshots/
 
-# Logs
+# Logs & temp test files
 *.log
 npm-debug.log*
+cookies.txt
+*.tmp
 
-# OS
+# OS & Editor
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/

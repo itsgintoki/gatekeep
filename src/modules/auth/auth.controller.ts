@@ -15,7 +15,6 @@ function setAuthCookies(res: Response, accessToken: string, refreshToken: string
     maxAge: ACCESS_TOKEN_TTL_MS,
   });
 
-  // path-scoped: cookie only sent to /auth/refresh, not every request
   res.cookie("refresh_token", refreshToken, {
     httpOnly: true,
     secure: isProduction,
