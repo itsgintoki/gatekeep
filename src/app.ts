@@ -7,6 +7,7 @@ import cookieParser from "cookie-parser";
 import authRouter from "./modules/auth/auth.routes";
 import notesRouter from "./modules/notes/notes.routes";
 import linksRouter from "./modules/links/links.routes";
+import resolveRouter from "./modules/resolve/resolve.routes";
 import { errorHandler } from "./middleware/errorHandler";
 
 export const app = express();
@@ -41,5 +42,8 @@ app.use("/links", linksRouter);
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
+
+// Mount public resolve routes last as catch-all
+app.use(resolveRouter);
 
 app.use(errorHandler);
