@@ -1,4 +1,25 @@
 services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gatekeep_api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=postgres://gatekeep:gatekeep_secret@postgres:5432/gatekeep
+      - JWT_ACCESS_SECRET=super_secret_access_jwt_key_gatekeep_2026
+      - JWT_REFRESH_SECRET=super_secret_refresh_jwt_key_gatekeep_2026
+      - JWT_ACCESS_EXPIRES_IN=15m
+      - JWT_REFRESH_EXPIRES_IN=7d
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   postgres:
     image: postgres:17
     container_name: gatekeep_db

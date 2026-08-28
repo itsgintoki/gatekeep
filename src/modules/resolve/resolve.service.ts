@@ -2,6 +2,7 @@ import argon2 from "argon2";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../db/index";
 import { links, accessLogs } from "../../db/schema";
+import { dispatchWebhook } from "../../lib/webhook";
 
 interface AccessContext {
   ip: string;
@@ -115,6 +116,32 @@ export async function resolveLink(
   logAccess(link.id, ctx).catch((err) => {
     console.error("[resolve] Failed to log access:", err.message);
   });
+
+  // Outbound Webhook Dispatch (Fire-and-Forget)
+  if (link.webhookId) {
+    const webhookId = link.webhookId;
+    dispatchWebhook(webhookId, "link.accessed", {
+      linkId: link.id,
+      slug: link.slug,
+      readsCount: updatedLink.readsCount,
+      maxReads: updatedLink.maxReads,
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+      referrer: ctx.referrer,
+    }).catch((err) => {
+      console.error("[resolve] Failed to dispatch webhook:", err.message);
+    });
+
+    if (updatedLink.isBurned) {
+      dispatchWebhook(webhookId, "link.burned", {
+        linkId: link.id,
+        slug: link.slug,
+        totalReads: updatedLink.readsCount,
+      }).catch((err) => {
+        console.error("[resolve] Failed to dispatch burn webhook:", err.message);
+      });
+    }
+  }
 
   return {
     requiresPassphrase: false,

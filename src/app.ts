@@ -7,8 +7,14 @@ import cookieParser from "cookie-parser";
 import authRouter from "./modules/auth/auth.routes";
 import notesRouter from "./modules/notes/notes.routes";
 import linksRouter from "./modules/links/links.routes";
+import webhooksRouter from "./modules/webhooks/webhooks.routes";
 import resolveRouter from "./modules/resolve/resolve.routes";
 import { errorHandler } from "./middleware/errorHandler";
+import {
+  authLimiter,
+  resolveLimiter,
+  apiLimiter,
+} from "./middleware/rateLimiter";
 
 export const app = express();
 
@@ -35,15 +41,17 @@ app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
-app.use("/auth", authRouter);
-app.use("/notes", notesRouter);
-app.use("/links", linksRouter);
+// Mount routes with tiered rate limiting
+app.use("/auth", authLimiter, authRouter);
+app.use("/notes", apiLimiter, notesRouter);
+app.use("/links", apiLimiter, linksRouter);
+app.use("/webhooks", apiLimiter, webhooksRouter);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// Mount public resolve routes last as catch-all
-app.use(resolveRouter);
+// Mount public resolve routes last with rate limiting
+app.use(resolveLimiter, resolveRouter);
 
 app.use(errorHandler);
