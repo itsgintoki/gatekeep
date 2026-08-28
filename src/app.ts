@@ -42,7 +42,7 @@ app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
 // Mount routes with tiered rate limiting
-app.use("/auth", authLimiter, authRouter);
+app.use("/auth", authRouter);
 app.use("/notes", apiLimiter, notesRouter);
 app.use("/links", apiLimiter, linksRouter);
 app.use("/webhooks", apiLimiter, webhooksRouter);

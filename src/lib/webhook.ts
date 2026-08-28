@@ -10,10 +10,10 @@ export interface WebhookPayload {
 }
 
 /**
- * Generates a cryptographically secure 32-byte hex secret prefixed with 'whsec_'
+ * Generates a cryptographically secure 32-byte hex secret prefixed with 'gk_sec_'
  */
 export function generateWebhookSecret(): string {
-  return "whsec_" + crypto.randomBytes(32).toString("hex");
+  return "gk_sec_" + crypto.randomBytes(32).toString("hex");
 }
 
 /**

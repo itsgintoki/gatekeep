@@ -4,14 +4,14 @@ import crypto from "crypto";
 import { generateWebhookSecret, signWebhookPayload } from "../src/lib/webhook";
 
 describe("Webhook HMAC-SHA256 Signatures", () => {
-  it("should generate a 32-byte hex secret with whsec_ prefix", () => {
+  it("should generate a 32-byte hex secret with gk_sec_ prefix", () => {
     const secret = generateWebhookSecret();
-    assert.ok(secret.startsWith("whsec_"), "Secret must start with whsec_");
-    assert.strictEqual(secret.length, 6 + 64, "Secret must be 6-char prefix + 64-char hex");
+    assert.ok(secret.startsWith("gk_sec_"), "Secret must start with gk_sec_");
+    assert.strictEqual(secret.length, 7 + 64, "Secret must be 7-char prefix + 64-char hex");
   });
 
   it("should generate valid sha256 signature format matching receiver expectations", () => {
-    const secret = "whsec_testsecret1234567890abcdef1234567890abcdef";
+    const secret = generateWebhookSecret();
     const payload = JSON.stringify({
       event: "link.accessed",
       timestamp: "2026-08-28T12:00:00.000Z",

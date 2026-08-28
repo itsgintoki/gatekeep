@@ -79,7 +79,7 @@ export function createRateLimiter(options: RateLimitOptions) {
 /** Strict limiter on auth routes (10 attempts / 15 minutes) to prevent password brute-forcing */
 export const authLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: process.env.NODE_ENV === "production" ? 10 : 100,
   message: "Too many authentication attempts. Please try again in 15 minutes.",
 });
 
