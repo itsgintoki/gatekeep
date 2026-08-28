@@ -42,3 +42,16 @@ export async function deleteLink(req: Request, res: Response, next: NextFunction
     next(err);
   }
 }
+
+/**
+ * GET /links/:id/analytics — Retrieve aggregated visitor analytics
+ */
+export async function getLinkAnalytics(req: Request, res: Response, next: NextFunction) {
+  try {
+    const linkId = param(req.params.id);
+    const analytics = await LinksService.getLinkAnalytics(linkId, req.user!.id);
+    res.json(analytics);
+  } catch (err) {
+    next(err);
+  }
+}
