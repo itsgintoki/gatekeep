@@ -9,8 +9,8 @@ import { createRateLimiter } from "../src/middleware/rateLimiter";
 
 describe("End-to-End System Integrity & Security Verification", () => {
   it("Zero-Knowledge Crypto: Should handle large payloads, special characters, and verify tampering", () => {
-    const payload = "🔑 DATABASE_PASSWORD=Super$ecret#2026! Unicode: 🚀🛡️🔥";
-    const passphrase = "correct-horse-battery-staple";
+    const payload = "Sample sensitive configuration data with symbols: !@#$%^&*()_+-=[]{}|;:,.<>?";
+    const passphrase = "test-encryption-passphrase-alpha-beta";
 
     const encrypted = encryptText(payload, passphrase);
     const [salt, iv, authTag, ciphertext] = encrypted.split(":");

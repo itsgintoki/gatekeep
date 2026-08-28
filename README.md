@@ -1,10 +1,10 @@
-# GateKeep 🛡️
+# GateKeep
 
 > **Zero-Knowledge Ephemeral Content Sharing Engine** with cryptographic access gates, rate limiting, HMAC-signed webhooks, and compound-indexed analytics.
 
 ---
 
-## 🌟 Key Architecture & Technical Highlights
+## Key Architecture & Technical Highlights
 
 * **Zero-Knowledge AES-256-GCM Note Encryption:** Symmetric client/server encryption using `scrypt` key derivation with random 16-byte salt, 12-byte IV, and 128-bit authentication tag. Plaintext is never stored in the database.
 * **Bijective Base62 Short Links:** Custom 62-character bijective encoding algorithm generating high-entropy 7-character URL-safe slugs ($62^7 \approx 3.52$ trillion combinations).
@@ -17,7 +17,7 @@
 
 ---
 
-## 🏗️ System Architecture & Request Pipeline
+## System Architecture & Request Pipeline
 
 ```
   Public Internet (Clients / Browsers / Bots)
@@ -62,10 +62,10 @@
 
 ---
 
-## 🚀 Quickstart & Deployment
+## Quickstart & Deployment
 
 ### 1. Prerequisites
-* Node.js $\ge 20$
+* Node.js >= 20
 * Docker & Docker Compose
 
 ### 2. Environment Configuration
@@ -97,7 +97,7 @@ docker compose up --build
 
 ---
 
-## 📚 API Reference
+## API Reference
 
 ### Authentication (`/auth`)
 * `POST /auth/signup` — Register new user account.
@@ -135,5 +135,5 @@ docker compose up --build
 
 ---
 
-## 📄 License
+## License
 ISC
