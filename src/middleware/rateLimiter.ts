@@ -1,4 +1,9 @@
 import { Request, Response, NextFunction } from "express";
+export type RateLimitMiddleware = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => void;
 
 interface RateLimitOptions {
   windowMs: number; // Time window in milliseconds
@@ -15,7 +20,7 @@ interface ClientRecord {
  * Tracks precise timestamp arrays per IP to accurately throttle bursts
  * without boundary reset artifacts found in fixed-window algorithms.
  */
-export function createRateLimiter(options: RateLimitOptions) {
+export function createRateLimiter(options: RateLimitOptions): RateLimitMiddleware {
   const { windowMs, max, message = "Too many requests, please try again later." } = options;
   const store = new Map<string, ClientRecord>();
 
@@ -31,10 +36,7 @@ export function createRateLimiter(options: RateLimitOptions) {
   }, 5 * 60 * 1000).unref();
 
   return (req: Request, res: Response, next: NextFunction) => {
-    // Extract IP with reverse-proxy fallback
-    const forwarded = req.headers["x-forwarded-for"];
-    const rawIp = Array.isArray(forwarded) ? forwarded[0] : forwarded;
-    const ip = (rawIp ? rawIp.split(",")[0].trim() : req.ip) || "unknown";
+    const ip = req.ip || "unknown";
 
     const now = Date.now();
     let record = store.get(ip);

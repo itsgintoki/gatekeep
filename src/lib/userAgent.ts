@@ -4,60 +4,79 @@ export interface ParsedUserAgent {
   device: "desktop" | "mobile" | "tablet" | "bot" | "unknown";
 }
 
-/**
- * parseUserAgent — Extracts structured browser, OS, and device categories
- * from a raw User-Agent header string.
- */
+interface DetectionRule {
+  label: string;
+  includes: readonly string[];
+  excludes?: readonly string[];
+}
+
+const BOT_TOKENS = [
+  "bot",
+  "crawler",
+  "spider",
+  "slurp",
+  "discordbot",
+  "slackbot",
+  "twitterbot",
+] as const;
+
+const TABLET_TOKENS = ["ipad", "tablet", "kindle"] as const;
+const MOBILE_TOKENS = ["mobile", "iphone", "ipod", "android"] as const;
+
+const OS_RULES: readonly DetectionRule[] = [
+  { label: "Windows 10/11", includes: ["windows nt 10.0", "windows nt 11.0"] },
+  { label: "Windows", includes: ["windows"] },
+  { label: "iOS", includes: ["iphone", "ipad", "ipod"] },
+  { label: "macOS", includes: ["mac os x"] },
+  { label: "Android", includes: ["android"] },
+  { label: "Linux", includes: ["linux"] },
+];
+
+const BROWSER_RULES: readonly DetectionRule[] = [
+  { label: "Microsoft Edge", includes: ["edg/", "edge/"] },
+  { label: "Opera", includes: ["opr/", "opera/"] },
+  { label: "Google Chrome", includes: ["chrome/"], excludes: ["chromium"] },
+  { label: "Mozilla Firefox", includes: ["firefox/"] },
+  { label: "Apple Safari", includes: ["safari/"], excludes: ["chrome"] },
+  { label: "API Client", includes: ["curl/", "postmanruntime", "httpie"] },
+];
+
+function includesAny(value: string, tokens: readonly string[]): boolean {
+  return tokens.some((token) => value.includes(token));
+}
+
+function detectLabel(
+  value: string,
+  rules: readonly DetectionRule[],
+  fallback: string
+): string {
+  const match = rules.find(
+    (rule) =>
+      includesAny(value, rule.includes) &&
+      (!rule.excludes || !includesAny(value, rule.excludes))
+  );
+  return match?.label ?? fallback;
+}
+
 export function parseUserAgent(ua: string | undefined | null): ParsedUserAgent {
   if (!ua) {
     return { browser: "Unknown", os: "Unknown", device: "unknown" };
   }
 
-  const uaLower = ua.toLowerCase();
-
-  // 1. Detect Bots & Crawlers first
-  if (
-    uaLower.includes("bot") ||
-    uaLower.includes("crawler") ||
-    uaLower.includes("spider") ||
-    uaLower.includes("slurp") ||
-    uaLower.includes("discordbot") ||
-    uaLower.includes("slackbot") ||
-    uaLower.includes("twitterbot")
-  ) {
+  const normalized = ua.toLowerCase();
+  if (includesAny(normalized, BOT_TOKENS)) {
     return { browser: "Bot/Crawler", os: "Unknown", device: "bot" };
   }
 
-  // 2. Detect Device Type
-  let device: ParsedUserAgent["device"] = "desktop";
-  if (uaLower.includes("ipad") || uaLower.includes("tablet") || uaLower.includes("kindle")) {
-    device = "tablet";
-  } else if (
-    uaLower.includes("mobile") ||
-    uaLower.includes("iphone") ||
-    uaLower.includes("ipod") ||
-    uaLower.includes("android")
-  ) {
-    device = "mobile";
-  }
+  const device = includesAny(normalized, TABLET_TOKENS)
+    ? "tablet"
+    : includesAny(normalized, MOBILE_TOKENS)
+      ? "mobile"
+      : "desktop";
 
-  // 3. Detect Operating System
-  let os = "Unknown";
-  if (ua.includes("Windows NT 10.0") || ua.includes("Windows NT 11.0")) os = "Windows 10/11";
-  else if (ua.includes("Windows")) os = "Windows";
-  else if (ua.includes("iPhone") || ua.includes("iPad") || ua.includes("iPod")) os = "iOS";
-  else if (ua.includes("Mac OS X")) os = "macOS";
-  else if (ua.includes("Android")) os = "Android";
-  else if (ua.includes("Linux")) os = "Linux";
-
-  // 4. Detect Browser (Order matters due to compatibility tokens)
-  let browser = "Unknown";
-  if (ua.includes("Edg/") || ua.includes("Edge/")) browser = "Microsoft Edge";
-  else if (ua.includes("OPR/") || ua.includes("Opera/")) browser = "Opera";
-  else if (ua.includes("Chrome/") && !ua.includes("Chromium")) browser = "Google Chrome";
-  else if (ua.includes("Firefox/")) browser = "Mozilla Firefox";
-  else if (ua.includes("Safari/") && !ua.includes("Chrome")) browser = "Apple Safari";
-  else if (ua.includes("curl/") || ua.includes("PostmanRuntime") || ua.includes("HTTPie")) browser = "API Client";
-
-  return { browser, os, device };
+  return {
+    browser: detectLabel(normalized, BROWSER_RULES, "Unknown"),
+    os: detectLabel(normalized, OS_RULES, "Unknown"),
+    device,
+  };
 }

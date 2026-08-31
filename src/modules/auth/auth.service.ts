@@ -1,5 +1,5 @@
 import argon2, { HashOptions } from "argon2";
-import { eq, and } from "drizzle-orm";
+import { eq, and, gt } from "drizzle-orm";
 import { db } from "../../db/index";
 import { users, refreshTokens } from "../../db/schema";
 import {
@@ -7,6 +7,7 @@ import {
   signRefreshToken,
   verifyRefreshToken,
   hashToken,
+  type RefreshTokenPayload,
 } from "../../lib/jwt";
 
 const ARGON2_OPTIONS: HashOptions = {
@@ -62,7 +63,7 @@ export async function login(email: string, password: string) {
 }
 
 export async function refreshTokens_rotate(rawRefreshToken: string) {
-  let payload: ReturnType<typeof verifyRefreshToken>;
+  let payload: RefreshTokenPayload;
   try {
     payload = verifyRefreshToken(rawRefreshToken);
   } catch {
@@ -70,32 +71,44 @@ export async function refreshTokens_rotate(rawRefreshToken: string) {
   }
 
   const tokenHash = hashToken(rawRefreshToken);
-  const storedToken = await db.query.refreshTokens.findFirst({
-    where: and(
-      eq(refreshTokens.tokenHash, tokenHash),
-      eq(refreshTokens.isRevoked, false)
-    ),
+  return db.transaction(async (tx) => {
+    const [storedToken] = await tx
+      .update(refreshTokens)
+      .set({ isRevoked: true })
+      .where(
+        and(
+          eq(refreshTokens.tokenHash, tokenHash),
+          eq(refreshTokens.isRevoked, false),
+          gt(refreshTokens.expiresAt, new Date())
+        )
+      )
+      .returning({ userId: refreshTokens.userId });
+
+    if (!storedToken || storedToken.userId !== payload.sub) {
+      throw Object.assign(new Error("Refresh token expired or revoked"), {
+        status: 401,
+      });
+    }
+
+    const user = await tx.query.users.findFirst({
+      where: eq(users.id, storedToken.userId),
+      columns: { id: true, email: true },
+    });
+    if (!user) {
+      throw Object.assign(new Error("User not found"), { status: 401 });
+    }
+
+    const accessToken = signAccessToken({ sub: user.id, email: user.email });
+    const { token: refreshToken, expiresAt } = signRefreshToken(user.id);
+    await tx.insert(refreshTokens).values({
+      userId: user.id,
+      tokenHash: hashToken(refreshToken),
+      expiresAt,
+      isRevoked: false,
+    });
+
+    return { accessToken, refreshToken };
   });
-
-  if (!storedToken || storedToken.expiresAt < new Date()) {
-    throw Object.assign(new Error("Refresh token expired or revoked"), { status: 401 });
-  }
-
-  await db
-    .update(refreshTokens)
-    .set({ isRevoked: true })
-    .where(eq(refreshTokens.id, storedToken.id));
-
-  const user = await db.query.users.findFirst({
-    where: eq(users.id, payload.sub),
-    columns: { id: true, email: true, createdAt: true },
-  });
-
-  if (!user) {
-    throw Object.assign(new Error("User not found"), { status: 401 });
-  }
-
-  return issueTokenPair(user.id, user.email);
 }
 
 export async function logout(rawRefreshToken: string) {

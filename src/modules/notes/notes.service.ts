@@ -3,6 +3,7 @@ import { db } from "../../db/index";
 import { notes, attachments } from "../../db/schema";
 import { uploadBuffer, deleteAsset } from "../../lib/cloudinary";
 import { encryptText, decryptText } from "../../lib/crypto";
+import { prepareNoteContent } from "../../lib/noteContent";
 import type { CreateNoteInput, UpdateNoteInput } from "./notes.validation";
 
 export async function createNote(userId: string, data: CreateNoteInput) {
@@ -77,6 +78,7 @@ export async function decryptNote(noteId: string, userId: string, passphrase: st
   };
 }
 
+
 export async function updateNote(
   noteId: string,
   userId: string,
@@ -90,18 +92,7 @@ export async function updateNote(
     throw Object.assign(new Error("Note not found"), { status: 404 });
   }
 
-  let content = data.content !== undefined ? data.content : existing.content;
-  let isEncrypted = existing.isEncrypted;
-
-  if (data.passphrase) {
-    content = encryptText(content, data.passphrase);
-    isEncrypted = true;
-  } else if (data.content !== undefined && existing.isEncrypted) {
-    throw Object.assign(
-      new Error("Cannot update content of an encrypted note without providing a passphrase"),
-      { status: 400 }
-    );
-  }
+  const { content, isEncrypted } = prepareNoteContent(existing, data);
 
   const [updated] = await db
     .update(notes)
@@ -128,20 +119,21 @@ export async function deleteNote(noteId: string, userId: string) {
     throw Object.assign(new Error("Note not found"), { status: 404 });
   }
 
-  await Promise.allSettled(
-    note.attachments.map((a) => deleteAsset(a.cloudinaryPublicId))
+  await Promise.all(
+    note.attachments.map((attachment) =>
+      deleteAsset(attachment.cloudinaryPublicId)
+    )
   );
 
-  if (note.attachments.length > 0) {
-    await db
-      .delete(attachments)
-      .where(eq(attachments.noteId, noteId));
-  }
-
-  await db
-    .update(notes)
-    .set({ deletedAt: new Date() })
-    .where(eq(notes.id, noteId));
+  await db.transaction(async (tx) => {
+    if (note.attachments.length > 0) {
+      await tx.delete(attachments).where(eq(attachments.noteId, noteId));
+    }
+    await tx
+      .update(notes)
+      .set({ deletedAt: new Date() })
+      .where(eq(notes.id, noteId));
+  });
 }
 
 export async function uploadAttachment(
@@ -160,18 +152,26 @@ export async function uploadAttachment(
 
   const { url, publicId } = await uploadBuffer(file.buffer, `gatekeep/${userId}`);
 
-  const [attachment] = await db
-    .insert(attachments)
-    .values({
-      noteId,
-      url,
-      cloudinaryPublicId: publicId,
-      mimeType: file.mimetype,
-      sizeBytes: file.size,
-    })
-    .returning();
-
-  return attachment;
+  try {
+    const [attachment] = await db
+      .insert(attachments)
+      .values({
+        noteId,
+        url,
+        cloudinaryPublicId: publicId,
+        mimeType: file.mimetype,
+        sizeBytes: file.size,
+      })
+      .returning();
+    return attachment;
+  } catch (error) {
+    try {
+      await deleteAsset(publicId);
+    } catch (cleanupError) {
+      console.error("Failed to clean up uploaded asset after database error:", cleanupError);
+    }
+    throw error;
+  }
 }
 
 export async function deleteAttachment(
@@ -188,14 +188,18 @@ export async function deleteAttachment(
     throw Object.assign(new Error("Note not found"), { status: 404 });
   }
 
-  const [attachment] = await db
-    .delete(attachments)
-    .where(and(eq(attachments.id, attachmentId), eq(attachments.noteId, noteId)))
-    .returning();
-
+  const attachment = await db.query.attachments.findFirst({
+    where: and(
+      eq(attachments.id, attachmentId),
+      eq(attachments.noteId, noteId)
+    ),
+  });
   if (!attachment) {
     throw Object.assign(new Error("Attachment not found"), { status: 404 });
   }
 
   await deleteAsset(attachment.cloudinaryPublicId);
+  await db
+    .delete(attachments)
+    .where(and(eq(attachments.id, attachmentId), eq(attachments.noteId, noteId)));
 }

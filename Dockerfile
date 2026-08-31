@@ -29,6 +29,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 
 # Copy compiled JavaScript from builder stage
 COPY --from=builder /app/dist ./dist
+COPY drizzle/ ./drizzle/
 
 # Security: Run as non-privileged node user
 USER node

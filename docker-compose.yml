@@ -8,14 +8,15 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NODE_ENV=production
-      - PORT=3000
-      - DATABASE_URL=postgres://gatekeep:gatekeep_secret@postgres:5432/gatekeep
-      - JWT_ACCESS_SECRET=super_secret_access_jwt_key_gatekeep_2026
-      - JWT_REFRESH_SECRET=super_secret_refresh_jwt_key_gatekeep_2026
-      - JWT_ACCESS_EXPIRES_IN=15m
-      - JWT_REFRESH_EXPIRES_IN=7d
-      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-gatekeep}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-gatekeep}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET must be set}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET must be set}
+      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      TRUST_PROXY: ${TRUST_PROXY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -25,11 +26,11 @@ services:
     container_name: gatekeep_db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: gatekeep
-      POSTGRES_PASSWORD: gatekeep_secret
-      POSTGRES_DB: gatekeep
+      POSTGRES_USER: ${POSTGRES_USER:-gatekeep}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: ${POSTGRES_DB:-gatekeep}
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - gatekeep_pg_data:/var/lib/postgresql/data
     healthcheck:

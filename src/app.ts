@@ -10,13 +10,17 @@ import linksRouter from "./modules/links/links.routes";
 import webhooksRouter from "./modules/webhooks/webhooks.routes";
 import resolveRouter from "./modules/resolve/resolve.routes";
 import { errorHandler } from "./middleware/errorHandler";
-import {
-  authLimiter,
-  resolveLimiter,
-  apiLimiter,
-} from "./middleware/rateLimiter";
+import { resolveLimiter, apiLimiter } from "./middleware/rateLimiter";
 
 export const app = express();
+const trustProxyHops = process.env.TRUST_PROXY?.trim();
+if (trustProxyHops) {
+  const hops = Number(trustProxyHops);
+  if (!Number.isInteger(hops) || hops < 0) {
+    throw new Error("TRUST_PROXY must be a non-negative integer");
+  }
+  app.set("trust proxy", hops);
+}
 
 app.use(helmet());
 

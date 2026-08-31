@@ -1,7 +1,7 @@
 import argon2 from "argon2";
-import { and, eq, isNull, desc, inArray } from "drizzle-orm";
+import { and, eq, isNull, desc, inArray, sql } from "drizzle-orm";
 import { db } from "../../db/index";
-import { links, notes, accessLogs } from "../../db/schema";
+import { links, notes, accessLogs, webhooks } from "../../db/schema";
 import { generateSlug } from "../../lib/base62";
 import { parseUserAgent } from "../../lib/userAgent";
 import type { CreateLinkInput } from "./links.validation";
@@ -25,6 +25,18 @@ export async function createLink(userId: string, data: CreateLinkInput) {
 
   if (!note) {
     throw Object.assign(new Error("Note not found"), { status: 404 });
+  }
+  if (data.webhookId) {
+    const webhook = await db.query.webhooks.findFirst({
+      where: and(
+        eq(webhooks.id, data.webhookId),
+        eq(webhooks.userId, userId)
+      ),
+      columns: { id: true },
+    });
+    if (!webhook) {
+      throw Object.assign(new Error("Webhook not found"), { status: 404 });
+    }
   }
 
   let passphraseHash: string | null = null;
@@ -154,12 +166,16 @@ export async function deleteLink(linkId: string, userId: string) {
   await db.delete(links).where(eq(links.id, linkId));
 }
 
-/**
- * Retrieve aggregated analytics for a specific link.
- * Leverages the compound index (link_id, accessed_at) for zero-sort retrieval.
- */
+interface AggregationRow {
+  label: string;
+  count: number;
+}
+
+function toBreakdown(rows: AggregationRow[]): Record<string, number> {
+  return Object.fromEntries(rows.map((row) => [row.label, Number(row.count)]));
+}
+
 export async function getLinkAnalytics(linkId: string, userId: string) {
-  // 1. Verify link exists and requester owns the parent note
   const link = await db.query.links.findFirst({
     where: eq(links.id, linkId),
     with: {
@@ -173,69 +189,90 @@ export async function getLinkAnalytics(linkId: string, userId: string) {
     throw Object.assign(new Error("Link not found"), { status: 404 });
   }
 
-  // 2. Fetch all access logs for this link leveraging the compound index
-  const logs = await db.query.accessLogs.findMany({
-    where: eq(accessLogs.linkId, linkId),
-    orderBy: desc(accessLogs.accessedAt),
-  });
+  const dateLabel = sql<string>`to_char(${accessLogs.accessedAt}, 'YYYY-MM-DD')`;
+  const browserLabel = sql<string>`COALESCE(${accessLogs.browser}, 'Unknown')`;
+  const osLabel = sql<string>`COALESCE(${accessLogs.os}, 'Unknown')`;
+  const deviceLabel = sql<string>`COALESCE(${accessLogs.device}, 'unknown')`;
+  const referrerLabel = sql<string>`COALESCE(${accessLogs.referrerHost}, 'Direct / None')`;
+  const condition = eq(accessLogs.linkId, linkId);
 
-  // 3. Compute Aggregated Metrics
-  const totalClicks = logs.length;
-  const uniqueIPs = new Set(logs.map((l) => l.ip)).size;
+  const [
+    summaryRows,
+    clicksByDateRows,
+    browserRows,
+    osRows,
+    deviceRows,
+    referrerRows,
+    recentLogs,
+  ] = await Promise.all([
+    db
+      .select({
+        totalClicks: sql<number>`count(*)::int`,
+        uniqueVisitors: sql<number>`count(DISTINCT ${accessLogs.ip})::int`,
+      })
+      .from(accessLogs)
+      .where(condition),
+    db
+      .select({ label: dateLabel, count: sql<number>`count(*)::int` })
+      .from(accessLogs)
+      .where(condition)
+      .groupBy(dateLabel),
+    db
+      .select({ label: browserLabel, count: sql<number>`count(*)::int` })
+      .from(accessLogs)
+      .where(condition)
+      .groupBy(browserLabel),
+    db
+      .select({ label: osLabel, count: sql<number>`count(*)::int` })
+      .from(accessLogs)
+      .where(condition)
+      .groupBy(osLabel),
+    db
+      .select({ label: deviceLabel, count: sql<number>`count(*)::int` })
+      .from(accessLogs)
+      .where(condition)
+      .groupBy(deviceLabel),
+    db
+      .select({ label: referrerLabel, count: sql<number>`count(*)::int` })
+      .from(accessLogs)
+      .where(condition)
+      .groupBy(referrerLabel),
+    db.query.accessLogs.findMany({
+      where: condition,
+      orderBy: desc(accessLogs.accessedAt),
+      limit: 15,
+    }),
+  ]);
 
-  const clicksByDate: Record<string, number> = {};
-  const browsers: Record<string, number> = {};
-  const osList: Record<string, number> = {};
-  const devices: Record<string, number> = {};
-  const referrers: Record<string, number> = {};
-
-  for (const log of logs) {
-    // Group clicks by date (YYYY-MM-DD)
-    const dateKey = log.accessedAt.toISOString().split("T")[0];
-    clicksByDate[dateKey] = (clicksByDate[dateKey] || 0) + 1;
-
-    // Parse User-Agent breakdown
-    const parsed = parseUserAgent(log.userAgent);
-    browsers[parsed.browser] = (browsers[parsed.browser] || 0) + 1;
-    osList[parsed.os] = (osList[parsed.os] || 0) + 1;
-    devices[parsed.device] = (devices[parsed.device] || 0) + 1;
-
-    // Referrer breakdown
-    let ref = "Direct / None";
-    if (log.referrer) {
-      try {
-        ref = new URL(log.referrer).hostname || log.referrer;
-      } catch {
-        ref = log.referrer.slice(0, 50);
-      }
-    }
-    referrers[ref] = (referrers[ref] || 0) + 1;
-  }
-
-  // 4. Return structured analytics payload
+  const summary = summaryRows[0] ?? { totalClicks: 0, uniqueVisitors: 0 };
   return {
     linkId: link.id,
     slug: link.slug,
     noteTitle: link.note.title,
     summary: {
-      totalClicks,
-      uniqueVisitors: uniqueIPs,
+      totalClicks: Number(summary.totalClicks),
+      uniqueVisitors: Number(summary.uniqueVisitors),
       isBurned: link.isBurned,
       readsCount: link.readsCount,
       maxReads: link.maxReads,
     },
     breakdown: {
-      clicksByDate,
-      devices,
-      browsers,
-      operatingSystems: osList,
-      topReferrers: referrers,
+      clicksByDate: toBreakdown(clicksByDateRows),
+      devices: toBreakdown(deviceRows),
+      browsers: toBreakdown(browserRows),
+      operatingSystems: toBreakdown(osRows),
+      topReferrers: toBreakdown(referrerRows),
     },
-    recentAccesses: logs.slice(0, 15).map((l) => ({
-      ip: l.ip.includes(":") ? l.ip : l.ip.replace(/\.\d+$/, ".***"), // Anonymize IPv4 tail
-      ...parseUserAgent(l.userAgent),
-      referrer: l.referrer ?? "Direct",
-      accessedAt: l.accessedAt,
-    })),
+    recentAccesses: recentLogs.map((log) => {
+      const parsed = parseUserAgent(log.userAgent);
+      return {
+        ip: log.ip.includes(":") ? log.ip : log.ip.replace(/\.\d+$/, ".***"),
+        browser: log.browser ?? parsed.browser,
+        os: log.os ?? parsed.os,
+        device: log.device ?? parsed.device,
+        referrer: log.referrer ?? "Direct",
+        accessedAt: log.accessedAt,
+      };
+    }),
   };
 }

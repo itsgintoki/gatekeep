@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
+import type { Request, Response } from "express";
 import argon2 from "argon2";
 import { generateSlug, encodeBase62, decodeBase62 } from "../src/lib/base62";
 import { encryptText, decryptText } from "../src/lib/crypto";
@@ -8,7 +9,7 @@ import { parseUserAgent } from "../src/lib/userAgent";
 import { createRateLimiter } from "../src/middleware/rateLimiter";
 
 describe("End-to-End System Integrity & Security Verification", () => {
-  it("Zero-Knowledge Crypto: Should handle large payloads, special characters, and verify tampering", () => {
+  it("Encryption at Rest: Should handle large payloads, special characters, and verify tampering", () => {
     const payload = "Sample sensitive configuration data with symbols: !@#$%^&*()_+-=[]{}|;:,.<>?";
     const passphrase = "test-encryption-passphrase-alpha-beta";
 
@@ -25,7 +26,8 @@ describe("End-to-End System Integrity & Security Verification", () => {
     // Invalid passphrase
     assert.throws(
       () => decryptText(encrypted, "wrong-passphrase"),
-      (err: any) => err.status === 400
+      (err: unknown) =>
+        err instanceof Error && "status" in err && err.status === 400
     );
   });
 
@@ -83,14 +85,14 @@ describe("End-to-End System Integrity & Security Verification", () => {
     let passed = 0;
     let blocked = 0;
 
-    const req: any = { headers: {}, ip: "10.0.0.1" };
-    const res: any = {
+    const req = { headers: {}, ip: "10.0.0.1" } as unknown as Request;
+    const res = {
       setHeader: () => {},
       status: (code: number) => {
         if (code === 429) blocked++;
         return { json: () => {} };
       },
-    };
+    } as unknown as Response;
     const next = () => {
       passed++;
     };

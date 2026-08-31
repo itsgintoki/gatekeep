@@ -7,6 +7,7 @@ import {
   integer,
   timestamp,
   index,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
@@ -89,10 +90,42 @@ export const accessLogs = pgTable(
     ip: varchar("ip", { length: 45 }).notNull(),
     userAgent: text("user_agent"),
     referrer: text("referrer"),
+    browser: varchar("browser", { length: 100 }),
+    os: varchar("os", { length: 100 }),
+    device: varchar("device", { length: 20 }),
+    referrerHost: text("referrer_host"),
     accessedAt: timestamp("accessed_at").defaultNow().notNull(),
   },
   (table) => [
     index("idx_access_logs_link_accessed").on(table.linkId, table.accessedAt),
+  ]
+);
+
+export const webhookDeliveries = pgTable(
+  "webhook_deliveries",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    webhookId: uuid("webhook_id")
+      .notNull()
+      .references(() => webhooks.id, { onDelete: "cascade" }),
+    event: varchar("event", { length: 50 })
+      .$type<"link.accessed" | "link.burned">()
+      .notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    attempts: integer("attempts").default(0).notNull(),
+    nextAttemptAt: timestamp("next_attempt_at").defaultNow().notNull(),
+    lockedAt: timestamp("locked_at"),
+    deliveredAt: timestamp("delivered_at"),
+    failedAt: timestamp("failed_at"),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("idx_webhook_deliveries_due").on(
+      table.deliveredAt,
+      table.failedAt,
+      table.nextAttemptAt
+    ),
   ]
 );
 
@@ -125,10 +158,18 @@ export const accessLogsRelations = relations(accessLogs, ({ one }) => ({
 export const webhooksRelations = relations(webhooks, ({ one, many }) => ({
   user: one(users, { fields: [webhooks.userId], references: [users.id] }),
   links: many(links),
+  deliveries: many(webhookDeliveries),
 }));
 
 export const refreshTokensRelations = relations(refreshTokens, ({ one }) => ({
   user: one(users, { fields: [refreshTokens.userId], references: [users.id] }),
+}));
+
+export const webhookDeliveriesRelations = relations(webhookDeliveries, ({ one }) => ({
+  webhook: one(webhooks, {
+    fields: [webhookDeliveries.webhookId],
+    references: [webhooks.id],
+  }),
 }));
 
 export type User = typeof users.$inferSelect;
@@ -140,5 +181,6 @@ export type NewLink = typeof links.$inferInsert;
 export type AccessLog = typeof accessLogs.$inferSelect;
 export type Webhook = typeof webhooks.$inferSelect;
 export type RefreshToken = typeof refreshTokens.$inferSelect;
+export type WebhookDelivery = typeof webhookDeliveries.$inferSelect;
 export type Attachment = typeof attachments.$inferSelect;
 export type NewAttachment = typeof attachments.$inferInsert;

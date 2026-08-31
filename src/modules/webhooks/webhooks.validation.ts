@@ -1,7 +1,10 @@
 import { z } from "zod";
 
 export const createWebhookSchema = z.object({
-  url: z.string().url("Must be a valid HTTP or HTTPS URL"),
+  url: z
+    .string()
+    .url("Must be a valid HTTPS URL")
+    .refine((value) => new URL(value).protocol === "https:", "Webhook URL must use HTTPS"),
 });
 
 export const listWebhooksQuerySchema = z.object({

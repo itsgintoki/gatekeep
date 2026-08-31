@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert";
 import { encryptText, decryptText } from "../src/lib/crypto";
 
-describe("AES-256-GCM Zero-Knowledge Cryptography", () => {
+describe("AES-256-GCM Encryption at Rest", () => {
   it("should encrypt and decrypt plaintext correctly with correct passphrase", () => {
     const plain = "SuperSecretNoteContent123!@#";
     const passphrase = "my-strong-password";
@@ -22,7 +22,11 @@ describe("AES-256-GCM Zero-Knowledge Cryptography", () => {
 
     assert.throws(
       () => decryptText(encrypted, "wrong-pass"),
-      (err: any) => err.status === 400 && err.message.includes("Decryption failed")
+      (err: unknown) =>
+        err instanceof Error &&
+        "status" in err &&
+        err.status === 400 &&
+        err.message.includes("Decryption failed")
     );
   });
 
@@ -38,7 +42,8 @@ describe("AES-256-GCM Zero-Knowledge Cryptography", () => {
 
     assert.throws(
       () => decryptText(tamperedPayload, "master-key"),
-      (err: any) => err.status === 400
+      (err: unknown) =>
+        err instanceof Error && "status" in err && err.status === 400
     );
   });
 });

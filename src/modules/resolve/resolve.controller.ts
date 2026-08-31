@@ -3,12 +3,8 @@ import * as ResolveService from "./resolve.service";
 import { accessLinkSchema, type AccessLinkInput } from "./resolve.validation";
 
 function extractAccessContext(req: Request) {
-  const forwarded = req.headers["x-forwarded-for"];
-  const rawIp = Array.isArray(forwarded) ? forwarded[0] : forwarded;
-  const clientIp = (rawIp ? rawIp.split(",")[0].trim() : req.ip) || "unknown";
-
   return {
-    ip: clientIp.slice(0, 45),
+    ip: (req.ip || "unknown").slice(0, 45),
     userAgent: typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : undefined,
     referrer: typeof req.headers["referer"] === "string" ? req.headers["referer"] : undefined,
   };
@@ -24,9 +20,8 @@ export async function resolveGet(
       ? req.params.slug[0]
       : req.params.slug;
 
-    const ctx = extractAccessContext(req);
 
-    const result = await ResolveService.resolveLink(slug, undefined, ctx);
+    const result = await ResolveService.inspectLink(slug);
     res.json(result);
   } catch (err) {
     next(err);

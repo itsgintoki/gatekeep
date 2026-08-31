@@ -2,9 +2,11 @@ import { and, eq, desc } from "drizzle-orm";
 import { db } from "../../db/index";
 import { webhooks } from "../../db/schema";
 import { generateWebhookSecret } from "../../lib/webhook";
+import { assertSafeWebhookUrl } from "../../lib/webhookHttp";
 import type { CreateWebhookInput } from "./webhooks.validation";
 
 export async function createWebhook(userId: string, data: CreateWebhookInput) {
+  await assertSafeWebhookUrl(data.url);
   const secret = generateWebhookSecret();
 
   const [webhook] = await db

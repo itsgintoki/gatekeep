@@ -1,7 +1,17 @@
 import { Request, Response, NextFunction } from "express";
 import { ZodError } from "zod";
 
-export function errorHandler(err: any, req: Request, res: Response, _next: NextFunction) {
+interface HttpError extends Error {
+  status?: number;
+  statusCode?: number;
+}
+
+export function errorHandler(
+  err: unknown,
+  req: Request,
+  res: Response,
+  _next: NextFunction
+) {
   if (err instanceof ZodError) {
     res.status(400).json({
       message: "Validation failed",
@@ -13,14 +23,23 @@ export function errorHandler(err: any, req: Request, res: Response, _next: NextF
     return;
   }
 
-  const status = err.status ?? err.statusCode ?? 500;
-  const message = err.message ?? "Internal server error";
+  const error: HttpError = err instanceof Error ? err : new Error(String(err));
+  const requestedStatus = error.status ?? error.statusCode;
+  const status =
+    Number.isInteger(requestedStatus) &&
+    requestedStatus !== undefined &&
+    requestedStatus >= 400 &&
+    requestedStatus <= 599
+      ? requestedStatus
+      : 500;
+  const response: Record<string, unknown> = {
+    message: status >= 500 ? "Internal server error" : error.message,
+  };
 
-  const response: Record<string, unknown> = { message };
-  if (process.env.NODE_ENV !== "production" && err.stack) {
-    response.stack = err.stack;
+  if (process.env.NODE_ENV !== "production" && error.stack) {
+    response.stack = error.stack;
   }
 
-  console.error(`[${req.method}] ${req.path} →`, err.message);
+  console.error(`[${req.method}] ${req.path} →`, error);
   res.status(status).json(response);
 }

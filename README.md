@@ -1,12 +1,12 @@
 # GateKeep
 
-> **Zero-Knowledge Ephemeral Content Sharing Engine** with cryptographic access gates, rate limiting, HMAC-signed webhooks, and compound-indexed analytics.
+> **Encrypted Ephemeral Content Sharing Engine** with cryptographic access gates, rate limiting, HMAC-signed webhooks, and compound-indexed analytics.
 
 ---
 
 ## Key Architecture & Technical Highlights
 
-* **Zero-Knowledge AES-256-GCM Note Encryption:** Symmetric client/server encryption using `scrypt` key derivation with random 16-byte salt, 12-byte IV, and 128-bit authentication tag. Plaintext is never stored in the database.
+* **AES-256-GCM Encryption at Rest:** The API encrypts note content with `scrypt` key derivation, a random 16-byte salt, 12-byte IV, and 128-bit authentication tag. Plaintext is not stored in PostgreSQL, but the API receives plaintext and passphrases during encryption and decryption.
 * **Bijective Base62 Short Links:** Custom 62-character bijective encoding algorithm generating high-entropy 7-character URL-safe slugs ($62^7 \approx 3.52$ trillion combinations).
 * **Sequential 5-Gate Access Engine:** Public resolution pipeline ordered from cheapest $O(1)$ checks (existence, boolean burn, lazy expiration) to CPU-heavy cryptographic verification (`argon2id`) and atomic SQL increment.
 * **Atomic Burn-on-Read Concurrency:** Row-level locking in PostgreSQL with a single `UPDATE ... SET reads_count = reads_count + 1, is_burned = CASE ...` statement, eliminating read-modify-write race conditions.
@@ -78,16 +78,14 @@ cp .env.example .env
 # Start PostgreSQL container on port 5433
 docker compose up -d postgres
 
-# Push Drizzle schema to DB
-npm run db:push
-
-# Start development server with live reload
+# Start development server with live reload; migrations run automatically
 npm run dev
 ```
 
-### 4. Running Integration Tests
+### 4. Running Tests
 ```bash
-npm run test
+npm test
+npm run test:integration
 ```
 
 ### 5. Full Containerized Production Run
@@ -110,8 +108,8 @@ docker compose up --build
 * `POST /notes` — Create note (optional passphrase triggers AES-256-GCM encryption).
 * `GET /notes` — List user notes (pagination supported).
 * `GET /notes/:id` — Get note metadata and content.
-* `POST /notes/:id/decrypt` — Decrypt zero-knowledge ciphertext with passphrase.
-* `PATCH /notes/:id` — Update note title or encrypted content.
+* `POST /notes/:id/decrypt` — Decrypt server-side ciphertext with its passphrase.
+* `PATCH /notes/:id` — Update metadata, content, or encryption settings.
 * `DELETE /notes/:id` — Soft-delete note and cascade purge Cloudinary assets.
 * `POST /notes/:id/attachments` — Upload media (images/PDFs) to Cloudinary.
 * `DELETE /notes/:id/attachments/:attachmentId` — Remove media attachment.
@@ -130,8 +128,8 @@ docker compose up --build
 * `DELETE /webhooks/:id` — Remove webhook registration.
 
 ### Public Slug Resolution (`/:slug` — Public)
-* `GET /:slug` — Resolve content or receive passphrase challenge (`requiresPassphrase: true`).
-* `POST /:slug` — Submit passphrase in request body to unlock content.
+* `GET /:slug` — Inspect link availability and whether a passphrase is required; never consumes a read.
+* `POST /:slug` — Explicitly consume one read and optionally submit a link passphrase.
 
 ---
 

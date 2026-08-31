@@ -10,11 +10,21 @@ export const updateNoteSchema = z
   .object({
     title: z.string().min(1).max(255).trim().optional(),
     content: z.string().min(1).trim().optional(),
-    passphrase: z.string().min(4, "Passphrase must be at least 4 characters").max(128).optional(),
+    currentPassphrase: z.string().min(1).max(128).optional(),
+    newPassphrase: z
+      .string()
+      .min(4, "New passphrase must be at least 4 characters")
+      .max(128)
+      .nullable()
+      .optional(),
   })
-  .refine((d) => d.title !== undefined || d.content !== undefined || d.passphrase !== undefined, {
-    message: "At least one of title, content, or passphrase must be provided",
-  });
+  .refine(
+    (data) =>
+      data.title !== undefined ||
+      data.content !== undefined ||
+      data.newPassphrase !== undefined,
+    { message: "At least one update must be provided" }
+  );
 
 export const decryptNoteSchema = z.object({
   passphrase: z.string().min(1, "Passphrase is required"),
