@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { ZodError } from "zod";
+import { MulterError } from "multer";
 
 interface HttpError extends Error {
   status?: number;
@@ -12,6 +13,11 @@ export function errorHandler(
   res: Response,
   _next: NextFunction
 ) {
+  if (err instanceof MulterError) {
+    res.status(400).json({ message: err.code === "LIMIT_FILE_SIZE" ? "Files must be 30 MB or smaller" : err.message });
+    return;
+  }
+
   if (err instanceof ZodError) {
     res.status(400).json({
       message: "Validation failed",

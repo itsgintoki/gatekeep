@@ -8,6 +8,7 @@ const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 function setAuthCookies(res: Response, accessToken: string, refreshToken: string) {
   const isProduction = process.env.NODE_ENV === "production";
 
+  res.clearCookie("refresh_token", { path: "/auth/refresh" });
   res.cookie("access_token", accessToken, {
     httpOnly: true,
     secure: isProduction,
@@ -20,19 +21,21 @@ function setAuthCookies(res: Response, accessToken: string, refreshToken: string
     secure: isProduction,
     sameSite: "strict",
     maxAge: REFRESH_TOKEN_TTL_MS,
-    path: "/auth/refresh",
+    path: "/auth",
   });
 }
 
 function clearAuthCookies(res: Response) {
   res.clearCookie("access_token");
+  res.clearCookie("refresh_token", { path: "/auth" });
+  // Remove cookies issued before logout could receive the refresh token.
   res.clearCookie("refresh_token", { path: "/auth/refresh" });
 }
 
 export async function signup(req: Request, res: Response, next: NextFunction) {
   try {
-    const { email, password } = signupSchema.parse(req.body);
-    const { user, accessToken, refreshToken } = await AuthService.signup(email, password);
+    const { email, password, firstName, lastName } = signupSchema.parse(req.body);
+    const { user, accessToken, refreshToken } = await AuthService.signup(email, password, firstName, lastName);
     setAuthCookies(res, accessToken, refreshToken);
     res.status(201).json({ message: "Account created", user, accessToken });
   } catch (err) {
@@ -81,4 +84,12 @@ export async function logout(req: Request, res: Response, next: NextFunction) {
 
 export function me(req: Request, res: Response) {
   res.json({ user: req.user });
+}
+
+export async function logoutAll(req: Request, res: Response, next: NextFunction) {
+  try {
+    await AuthService.logoutAll(req.user!.id);
+    clearAuthCookies(res);
+    res.json({ message: "All refresh sessions revoked. Existing access tokens expire within 15 minutes." });
+  } catch (error) { next(error); }
 }

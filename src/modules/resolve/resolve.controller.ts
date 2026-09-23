@@ -38,10 +38,10 @@ export async function resolvePost(
       ? req.params.slug[0]
       : req.params.slug;
 
-    const { passphrase }: AccessLinkInput = accessLinkSchema.parse(req.body);
+    const { passphrase, notePassphrase }: AccessLinkInput = accessLinkSchema.parse(req.body);
     const ctx = extractAccessContext(req);
 
-    const result = await ResolveService.resolveLink(slug, passphrase, ctx);
+    const result = await ResolveService.resolveLink(slug, passphrase, ctx, notePassphrase);
     res.json(result);
   } catch (err) {
     next(err);

@@ -22,8 +22,8 @@ export async function createNote(req: Request, res: Response, next: NextFunction
 
 export async function listNotes(req: Request, res: Response, next: NextFunction) {
   try {
-    const { page, limit } = listNotesQuerySchema.parse(req.query);
-    const data = await NotesService.listNotes(req.user!.id, page, limit);
+    const { page, limit, search } = listNotesQuerySchema.parse(req.query);
+    const data = await NotesService.listNotes(req.user!.id, page, limit, search);
     res.json({ data, page, limit });
   } catch (err) {
     next(err);

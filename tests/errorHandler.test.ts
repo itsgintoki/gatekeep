@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { NextFunction, Request, Response } from "express";
 import { errorHandler } from "../src/middleware/errorHandler";
+import { MulterError } from "multer";
 
 interface CapturedResponse {
   status?: number;
@@ -33,6 +34,13 @@ function captureError(error: unknown): CapturedResponse {
 }
 
 describe("Production error responses", () => {
+  it("reports oversized attachments as a client error", () => {
+    assert.deepStrictEqual(captureError(new MulterError("LIMIT_FILE_SIZE")), {
+      status: 400,
+      body: { message: "Files must be 30 MB or smaller" },
+    });
+  });
+
   it("hides internal error details", () => {
     const previousEnvironment = process.env.NODE_ENV;
     process.env.NODE_ENV = "production";

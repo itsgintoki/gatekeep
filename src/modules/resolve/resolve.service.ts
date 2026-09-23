@@ -3,6 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../db/index";
 import { accessLogs, links, webhookDeliveries, type Link } from "../../db/schema";
 import { parseUserAgent } from "../../lib/userAgent";
+import { decryptText } from "../../lib/crypto";
 import type { WebhookEvent, WebhookPayload } from "../../lib/webhook";
 
 interface AccessContext {
@@ -16,6 +17,7 @@ interface LinkedNote {
   content: string;
   isEncrypted: boolean;
   deletedAt: Date | null;
+  attachments: Array<{ id: string; url: string; originalName: string; mimeType: string; sizeBytes: number }>;
 }
 
 interface AvailableLink extends Link {
@@ -35,11 +37,13 @@ interface ResolvedContent {
   isBurned: boolean;
   readsCount: number;
   maxReads: number | null;
+  attachments: LinkedNote["attachments"];
 }
 
 export interface LinkInspection {
   slug: string;
   requiresPassphrase: boolean;
+  isEncrypted?: true;
 }
 
 export type ResolveResult = PassphraseChallenge | ResolvedContent;
@@ -53,6 +57,7 @@ async function loadAvailableLink(slug: string): Promise<AvailableLink> {
     where: eq(links.slug, slug),
     with: {
       note: {
+        with: { attachments: { columns: { id: true, url: true, originalName: true, mimeType: true, sizeBytes: true } } },
         columns: {
           title: true,
           content: true,
@@ -176,13 +181,18 @@ async function consumeLink(link: AvailableLink, ctx: AccessContext) {
 
 export async function inspectLink(slug: string): Promise<LinkInspection> {
   const link = await loadAvailableLink(slug);
-  return { slug: link.slug, requiresPassphrase: Boolean(link.passphraseHash) };
+  return {
+    slug: link.slug,
+    requiresPassphrase: Boolean(link.passphraseHash),
+    ...(link.note.isEncrypted ? { isEncrypted: true as const } : {}),
+  };
 }
 
 export async function resolveLink(
   slug: string,
   passphrase: string | undefined,
-  ctx: AccessContext
+  ctx: AccessContext,
+  notePassphrase?: string
 ): Promise<ResolveResult> {
   const link = await loadAvailableLink(slug);
   if (link.passphraseHash) {
@@ -194,14 +204,18 @@ export async function resolveLink(
     }
   }
 
+  // Verify decryption before spending a read, especially for one-read links.
+  const decrypt = link.note.isEncrypted && notePassphrase !== undefined;
+  const content = decrypt ? decryptText(link.note.content, notePassphrase) : link.note.content;
   const updatedLink = await consumeLink(link, ctx);
   return {
     requiresPassphrase: false,
     title: link.note.title,
-    content: link.note.content,
-    isEncrypted: link.note.isEncrypted,
+    content,
+    isEncrypted: link.note.isEncrypted && !decrypt,
     isBurned: updatedLink.isBurned,
     readsCount: updatedLink.readsCount,
     maxReads: updatedLink.maxReads,
+    attachments: link.note.attachments,
   };
 }

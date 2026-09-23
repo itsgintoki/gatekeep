@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: gatekeep
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "1"
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_SCHEMA
+        value: gatekeep
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true

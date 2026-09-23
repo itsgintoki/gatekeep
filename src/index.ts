@@ -1,8 +1,7 @@
 import "dotenv/config";
-import path from "node:path";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { app } from "./app";
-import { db, pool } from "./db/index";
+import { pool } from "./db/index";
+import { runMigrations } from "./db/migrate";
 import { processWebhookDeliveries } from "./lib/webhook";
 import { validateRuntimeConfig } from "./lib/runtimeConfig";
 
@@ -26,7 +25,7 @@ async function pollWebhookDeliveries(): Promise<void> {
 
 async function main() {
   try {
-    await migrate(db, { migrationsFolder: path.join(__dirname, "../drizzle") });
+    await runMigrations();
     const client = await pool.connect();
     await client.query("SELECT 1");
     client.release();

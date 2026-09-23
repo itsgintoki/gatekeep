@@ -17,7 +17,7 @@ const ARGON2_OPTIONS: HashOptions = {
   parallelism: 4,
 };
 
-export async function signup(email: string, password: string) {
+export async function signup(email: string, password: string, firstName = "", lastName = "") {
   const existing = await db.query.users.findFirst({
     where: eq(users.email, email.toLowerCase()),
   });
@@ -30,7 +30,7 @@ export async function signup(email: string, password: string) {
 
   const insertedUsers = await db
     .insert(users)
-    .values({ email: email.toLowerCase(), passwordHash })
+    .values({ email: email.toLowerCase(), passwordHash, firstName, lastName })
     .returning();
   const user = insertedUsers[0];
 
@@ -117,6 +117,10 @@ export async function logout(rawRefreshToken: string) {
     .update(refreshTokens)
     .set({ isRevoked: true })
     .where(eq(refreshTokens.tokenHash, tokenHash));
+}
+
+export async function logoutAll(userId: string) {
+  await db.update(refreshTokens).set({ isRevoked: true }).where(eq(refreshTokens.userId, userId));
 }
 
 async function issueTokenPair(userId: string, email: string) {

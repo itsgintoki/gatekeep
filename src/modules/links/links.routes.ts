@@ -11,6 +11,7 @@ router.post("/", LinksController.createLink);
 router.get("/", LinksController.listLinks);
 router.get("/:id", LinksController.getLink);
 router.get("/:id/analytics", LinksController.getLinkAnalytics);
+router.get("/:id/qr", LinksController.getLinkQr);
 router.delete("/:id", LinksController.deleteLink);
 
 export default router;
