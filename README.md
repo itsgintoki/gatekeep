@@ -17,7 +17,7 @@ Open `/` for the GateKeep workspace. The frontend takes its cream, ink, orange, 
 
 Notes are private until you explicitly create a link. New notes need an initial manual save; existing notes autosave after 1.5 seconds unless encryption settings are changing. Duplicates copy content without copying attachments or links. Uploads support JPEG, PNG, GIF, WebP, PDF, Word, MP4, WebM, Ogg, and MOV files up to 30 MB. Shared pages preview images, PDFs, and video after successful access; other files open through a download link.
 
-A note's encryption passphrase and a link's access passphrase are separate. If both are set, the recipient needs both. Incorrect passphrases do not consume a read. Note encryption happens on the server; it is encryption at rest, not end-to-end encryption. File attachments use Cloudinary and are not encrypted by the note passphrase. Anyone with a direct file URL can access it even after a share link burns.
+A note's encryption passphrase and a link's access passphrase are separate. If both are set, the recipient needs both. Incorrect passphrases do not consume a read. Note encryption happens on the server; it is encryption at rest, not end-to-end encryption. Files are held in a private Supabase Storage bucket and are not encrypted by the note passphrase. Owners and successful share-link recipients receive signed URLs that expire after 15 minutes. A downloaded copy remains with its recipient, and an issued URL remains usable until expiry even after the share link burns.
 
 The app uses the existing httpOnly session cookies. Only the theme preference is stored in localStorage; note content, passphrases, and tokens are not saved there. The frontend and API share one Express origin and one deployment, with no separate frontend framework or service.
 
@@ -93,7 +93,7 @@ npm ci
 cp .env.example .env
 ```
 
-Fill in the database connection and JWT secrets. Cloudinary credentials are optional: the app starts without them and disables uploads. Production cookie sessions require HTTPS. When using a reverse proxy, set `TRUST_PROXY` to its trusted hop count. Same-origin browser requests are accepted automatically; add other trusted frontend origins to `ALLOWED_ORIGINS` only when needed.
+Fill in the database connection and JWT secrets. Supabase Storage credentials are optional locally: the app starts without them and disables uploads. Production cookie sessions require HTTPS. When using a reverse proxy, set `TRUST_PROXY` to its trusted hop count. Same-origin browser requests are accepted automatically; add other trusted frontend origins to `ALLOWED_ORIGINS` only when needed.
 
 ### 3. Local Development (with Docker Postgres)
 ```bash
@@ -124,13 +124,27 @@ docker compose up --build
 
 ### 6. Render deployment
 
-Create a Render Blueprint from this repository and select the branch containing `render.yaml`. It creates one free Node.js web service in Oregon, builds both TypeScript projects, generates the JWT secrets, and runs migrations before listening. Supply the **internal connection URL** of an existing PostgreSQL database in the same Render region as `DATABASE_URL`.
+Render hosts the browser app and Express API; Supabase provides PostgreSQL and private file storage. Create a Render Blueprint from this repository using `render.yaml`. It creates one free Node.js web service, builds both TypeScript projects, generates JWT secrets, and runs migrations before listening.
 
-The Blueprint sets `DATABASE_SCHEMA=gatekeep`. Gatekeep uses only that schema for its tables and foreign keys, with migration history in `gatekeep_migrations`. Existing tables and migrations in `public` are left alone. Keep `DATABASE_SCHEMA=public` for an existing standalone Gatekeep installation. Schema separation prevents naming collisions; apps still share database capacity, connection limits, outages, and expiry, and the shared database credentials are not a security boundary between them.
+Set these server-side environment variables in Render:
 
-To enable attachments, open **Gatekeep → Environment** in Render and add `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET`, then save and redeploy. Never commit these values. A Cloudinary account may also require PDF delivery to be enabled in its security settings. `/config` reports whether upload credentials are configured; `/health` is the deployment health check.
+| Variable | Value |
+| --- | --- |
+| `DATABASE_URL` | Supabase PostgreSQL connection URI; use the Session pooler on IPv4-only hosts and TLS |
+| `DATABASE_SCHEMA` | `gatekeep` |
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_SERVICE_KEY` | Supabase secret/service-role key, never sent to the browser |
+| `SUPABASE_STORAGE_BUCKET` | `gatekeep` |
 
-Render's free PostgreSQL instances expire after 30 days; see [Render's free-service limits](https://render.com/docs/free). Both apps need the shared database to remain available.
+Create a **private** `gatekeep` storage bucket with a 30 MB limit and the supported MIME types. The API authorizes users and links before issuing temporary file URLs. Do not make the bucket public. `/config` reports whether upload credentials are configured; `/health` is the deployment health check.
+
+Gatekeep uses its own `gatekeep` schema and `gatekeep_migrations` history. It does not use Supabase Auth or expose database credentials to the frontend. Existing standalone installations can retain `DATABASE_SCHEMA=public`. Never commit secrets.
+
+#### Moving an existing Gatekeep database
+
+The one-time transfer command is `node dist/db/copyDatabase.js`. Set `DATABASE_URL` to the new destination and `SOURCE_DATABASE_URL` to the old database; the source schema defaults to `gatekeep`. Stop writes to the old app during transfer. The command migrates an empty destination, copies Gatekeep records transactionally, checks counts, and records completion so a restart does not import twice. It refuses to overwrite a nonempty destination or copy the shared `public` schema. It reads one table into memory at a time, so use PostgreSQL backup tools for larger deployments.
+
+Existing Cloudinary attachments require a separate object migration before applying the storage migration; the migration refuses to proceed if attachment rows remain. The original hosted Gatekeep instance had uploads disabled. After verifying a transfer, restore the ordinary `npm start` command and remove `SOURCE_DATABASE_URL` before retiring the source database.
 
 ---
 
@@ -150,8 +164,8 @@ Render's free PostgreSQL instances expire after 30 days; see [Render's free-serv
 * `GET /notes/:id` — Get note metadata and content.
 * `POST /notes/:id/decrypt` — Decrypt server-side ciphertext with its passphrase.
 * `PATCH /notes/:id` — Update title, content, `isPinned`, or encryption settings.
-* `DELETE /notes/:id` — Soft-delete note and cascade purge Cloudinary assets.
-* `POST /notes/:id/attachments` — Upload images, PDF, Word, or video to Cloudinary (30 MB maximum).
+* `DELETE /notes/:id` — Soft-delete note and remove its Supabase files.
+* `POST /notes/:id/attachments` — Upload images, PDF, Word, or video to private Supabase Storage (30 MB maximum).
 * `DELETE /notes/:id/attachments/:attachmentId` — Remove media attachment.
 
 ### Links & Analytics (`/links` — Protected)

@@ -12,7 +12,7 @@ import webhooksRouter from "./modules/webhooks/webhooks.routes";
 import resolveRouter from "./modules/resolve/resolve.routes";
 import { errorHandler } from "./middleware/errorHandler";
 import { resolveLimiter, apiLimiter } from "./middleware/rateLimiter";
-import { storageConfigured } from "./lib/cloudinary";
+import { storageConfigured, storageOrigin } from "./lib/storage";
 
 export const app = express();
 const trustProxyHops = process.env.TRUST_PROXY?.trim();
@@ -24,10 +24,11 @@ if (trustProxyHops) {
   app.set("trust proxy", hops);
 }
 
+const storageSource = storageOrigin();
 app.use(helmet({ contentSecurityPolicy: { directives: {
-  imgSrc: ["'self'", "data:", "https://res.cloudinary.com"],
-  mediaSrc: ["'self'", "https://res.cloudinary.com"],
-  frameSrc: ["https://res.cloudinary.com"],
+  imgSrc: ["'self'", "data:", ...(storageSource ? [storageSource] : [])],
+  mediaSrc: ["'self'", ...(storageSource ? [storageSource] : [])],
+  frameSrc: ["'self'", ...(storageSource ? [storageSource] : [])],
 } } }));
 
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:3000")

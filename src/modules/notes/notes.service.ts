@@ -1,7 +1,7 @@
 import { and, eq, isNull, desc, ilike } from "drizzle-orm";
 import { db } from "../../db/index";
 import { notes, attachments } from "../../db/schema";
-import { uploadBuffer, deleteAsset } from "../../lib/cloudinary";
+import { createSignedUrl, createStoragePath, deleteAsset, uploadBuffer } from "../../lib/storage";
 import { encryptText, decryptText } from "../../lib/crypto";
 import { prepareNoteContent } from "../../lib/noteContent";
 import type { CreateNoteInput, UpdateNoteInput } from "./notes.validation";
@@ -65,7 +65,13 @@ export async function getNote(noteId: string, userId: string) {
   if (!note) {
     throw Object.assign(new Error("Note not found"), { status: 404 });
   }
-  return note;
+  return {
+    ...note,
+    attachments: await Promise.all(note.attachments.map(async ({ storagePath, ...attachment }) => ({
+      ...attachment,
+      url: await createSignedUrl(storagePath),
+    }))),
+  };
 }
 
 export async function decryptNote(noteId: string, userId: string, passphrase: string) {
@@ -120,7 +126,7 @@ export async function updateNote(
 export async function deleteNote(noteId: string, userId: string) {
   const note = await db.query.notes.findFirst({
     where: and(eq(notes.id, noteId), eq(notes.userId, userId), isNull(notes.deletedAt)),
-    with: { attachments: { columns: { cloudinaryPublicId: true, resourceType: true, id: true } } },
+    with: { attachments: { columns: { storagePath: true, id: true } } },
   });
 
   if (!note) {
@@ -129,7 +135,7 @@ export async function deleteNote(noteId: string, userId: string) {
 
   await Promise.all(
     note.attachments.map((attachment) =>
-      deleteAsset(attachment.cloudinaryPublicId, attachment.resourceType)
+      deleteAsset(attachment.storagePath)
     )
   );
 
@@ -158,25 +164,26 @@ export async function uploadAttachment(
     throw Object.assign(new Error("Note not found"), { status: 404 });
   }
 
-  const { url, publicId, resourceType } = await uploadBuffer(file.buffer, `gatekeep/${userId}`, file.mimetype);
+  const storagePath = createStoragePath(userId, noteId);
+  await uploadBuffer(storagePath, file.buffer, file.mimetype);
 
   try {
+    const url = await createSignedUrl(storagePath);
     const [attachment] = await db
       .insert(attachments)
       .values({
         noteId,
-        url,
-        cloudinaryPublicId: publicId,
-        resourceType,
+        storagePath,
         originalName: file.originalname.slice(0, 255),
         mimeType: file.mimetype,
         sizeBytes: file.size,
       })
       .returning();
-    return attachment;
+    const { storagePath: _storagePath, ...response } = attachment;
+    return { ...response, url };
   } catch (error) {
     try {
-      await deleteAsset(publicId, resourceType);
+      await deleteAsset(storagePath);
     } catch (cleanupError) {
       console.error("Failed to clean up uploaded asset after database error:", cleanupError);
     }
@@ -208,7 +215,7 @@ export async function deleteAttachment(
     throw Object.assign(new Error("Attachment not found"), { status: 404 });
   }
 
-  await deleteAsset(attachment.cloudinaryPublicId, attachment.resourceType);
+  await deleteAsset(attachment.storagePath);
   await db
     .delete(attachments)
     .where(and(eq(attachments.id, attachmentId), eq(attachments.noteId, noteId)));

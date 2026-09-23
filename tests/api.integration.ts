@@ -1,4 +1,4 @@
-import { after, before, describe, it } from "node:test";
+import { after, before, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import type { Server } from "node:http";
 import { eq } from "drizzle-orm";
@@ -16,8 +16,17 @@ process.env.JWT_REFRESH_SECRET ??= "integration-refresh-secret-at-least-32-bytes
 let server: Server | undefined;
 let baseUrl = "";
 const createdUserIds: string[] = [];
+let signingUnavailable = false;
+const fetchRequest = globalThis.fetch;
 
 before(async () => {
+  process.env.SUPABASE_URL = "https://storage-tests.invalid";
+  process.env.SUPABASE_SERVICE_KEY = "test-service-key";
+  mock.method(globalThis, "fetch", async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    if (!String(input).startsWith("https://storage-tests.invalid/")) return fetchRequest(input, init);
+    if (signingUnavailable) return Response.json({ message: "Storage temporarily unavailable" }, { status: 503 });
+    return Response.json({ signedURL: "/object/sign/gatekeep/internal-storage-id?token=test" });
+  });
   await runMigrations();
   const { promise, resolve } = Promise.withResolvers<void>();
   server = app.listen(0, "127.0.0.1", resolve);
@@ -63,7 +72,7 @@ describe("Database-backed security contracts", () => {
     assert.strictEqual((await NotesService.listNotes(account.user.id, 1, 1))[0].id, original.id);
     assert.strictEqual((await NotesService.listNotes(account.user.id, 2, 1))[0].id, newer.id);
     assert.deepStrictEqual((await NotesService.listNotes(account.user.id, 1, 20, "%")).map((note) => note.id), [original.id]);
-    await db.insert(attachments).values({ noteId: original.id, url: "https://res.cloudinary.com/demo/image/upload/sample.jpg", cloudinaryPublicId: "internal-storage-id", originalName: "design.jpg", mimeType: "image/jpeg", sizeBytes: 123 });
+    await db.insert(attachments).values({ noteId: original.id, storagePath: "internal-storage-id", originalName: "design.jpg", mimeType: "image/jpeg", sizeBytes: 123 });
     const link = await LinksService.createLink(account.user.id, { noteId: original.id, passphrase: "link-key", maxReads: 1 });
     const inspection = await fetch(`${baseUrl}/${link.slug}`);
     assert.ok(!("attachments" in await inspection.json()));
@@ -73,10 +82,16 @@ describe("Database-backed security contracts", () => {
     assert.match(qr.headers.get("content-type") ?? "", /image\/svg\+xml/);
     assert.match(await qr.text(), /<svg/);
     assert.strictEqual((await fetch(`${baseUrl}/links/${link.id}/qr`)).status, 401);
+    signingUnavailable = true;
+    const unavailable = await fetch(`${baseUrl}/${link.slug}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passphrase: "link-key", notePassphrase: "attachment-note-key" }) });
+    assert.strictEqual(unavailable.status, 502);
+    assert.strictEqual((await LinksService.getLink(link.id, account.user.id)).readsCount, 0);
+    signingUnavailable = false;
     const opened = await fetch(`${baseUrl}/${link.slug}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passphrase: "link-key", notePassphrase: "attachment-note-key" }) });
     const body = await opened.json() as { attachments: Array<Record<string, unknown>> };
     assert.strictEqual(body.attachments[0].originalName, "design.jpg");
-    assert.ok(!("cloudinaryPublicId" in body.attachments[0]));
+    assert.ok(!("storagePath" in body.attachments[0]));
+    assert.match(String(body.attachments[0].url), /\/object\/sign\//);
     await AuthService.logoutAll(account.user.id);
     await assert.rejects(AuthService.refreshTokens_rotate(account.refreshToken));
   });

@@ -4,6 +4,7 @@ import { db } from "../../db/index";
 import { accessLogs, links, webhookDeliveries, type Link } from "../../db/schema";
 import { parseUserAgent } from "../../lib/userAgent";
 import { decryptText } from "../../lib/crypto";
+import { createSignedUrl } from "../../lib/storage";
 import type { WebhookEvent, WebhookPayload } from "../../lib/webhook";
 
 interface AccessContext {
@@ -17,7 +18,7 @@ interface LinkedNote {
   content: string;
   isEncrypted: boolean;
   deletedAt: Date | null;
-  attachments: Array<{ id: string; url: string; originalName: string; mimeType: string; sizeBytes: number }>;
+  attachments: Array<{ id: string; storagePath: string; originalName: string; mimeType: string; sizeBytes: number }>;
 }
 
 interface AvailableLink extends Link {
@@ -37,7 +38,7 @@ interface ResolvedContent {
   isBurned: boolean;
   readsCount: number;
   maxReads: number | null;
-  attachments: LinkedNote["attachments"];
+  attachments: Array<{ id: string; url: string; originalName: string; mimeType: string; sizeBytes: number }>;
 }
 
 export interface LinkInspection {
@@ -57,7 +58,7 @@ async function loadAvailableLink(slug: string): Promise<AvailableLink> {
     where: eq(links.slug, slug),
     with: {
       note: {
-        with: { attachments: { columns: { id: true, url: true, originalName: true, mimeType: true, sizeBytes: true } } },
+        with: { attachments: { columns: { id: true, storagePath: true, originalName: true, mimeType: true, sizeBytes: true } } },
         columns: {
           title: true,
           content: true,
@@ -207,6 +208,10 @@ export async function resolveLink(
   // Verify decryption before spending a read, especially for one-read links.
   const decrypt = link.note.isEncrypted && notePassphrase !== undefined;
   const content = decrypt ? decryptText(link.note.content, notePassphrase) : link.note.content;
+  const signedAttachments = await Promise.all(link.note.attachments.map(async ({ storagePath, ...attachment }) => ({
+    ...attachment,
+    url: await createSignedUrl(storagePath),
+  })));
   const updatedLink = await consumeLink(link, ctx);
   return {
     requiresPassphrase: false,
@@ -216,6 +221,6 @@ export async function resolveLink(
     isBurned: updatedLink.isBurned,
     readsCount: updatedLink.readsCount,
     maxReads: updatedLink.maxReads,
-    attachments: link.note.attachments,
+    attachments: signedAttachments,
   };
 }

@@ -5,7 +5,7 @@ services:
     plan: free
     region: oregon
     buildCommand: npm ci --include=dev && npm run build
-    startCommand: npm start
+    startCommand: 'if [ -n "$SOURCE_DATABASE_URL" ]; then node dist/db/copyDatabase.js || exit 1; fi; npm start'
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
@@ -20,3 +20,9 @@ services:
         generateValue: true
       - key: JWT_REFRESH_SECRET
         generateValue: true
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
+        value: gatekeep

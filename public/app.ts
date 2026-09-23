@@ -1502,7 +1502,7 @@ async function loadStorageStatus(): Promise<void> {
   try {
     const config = await publicRequest<{ uploadsEnabled: boolean }>("/config");
     byId<HTMLInputElement>("attachment-input").disabled = !config.uploadsEnabled;
-    if (!config.uploadsEnabled) byId("storage-status").textContent = "Uploads are unavailable until Cloudinary credentials are added in Render. Supported: images, PDF, Word, and video up to 30 MB. Files are not encrypted by note passphrases.";
+    if (!config.uploadsEnabled) byId("storage-status").textContent = "Uploads are unavailable until Supabase Storage is configured. Supported: images, PDF, Word, and video up to 30 MB. Files are stored in a private bucket and are not encrypted by note passphrases.";
   } catch { /* the next upload will report a connection error */ }
 }
 

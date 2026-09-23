@@ -60,10 +60,8 @@ export const attachments = pgTable("attachments", {
   noteId: uuid("note_id")
     .notNull()
     .references(() => notes.id, { onDelete: "cascade" }),
-  url: text("url").notNull(),
-  cloudinaryPublicId: text("cloudinary_public_id").notNull(),
+  storagePath: text("storage_path").notNull(),
   originalName: text("original_name").default("Attachment").notNull(),
-  resourceType: varchar("resource_type", { length: 10 }).default("image").notNull(),
   mimeType: varchar("mime_type", { length: 100 }).notNull(),
   sizeBytes: integer("size_bytes").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
