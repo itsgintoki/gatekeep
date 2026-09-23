@@ -2,6 +2,8 @@
 
 > **Encrypted Ephemeral Content Sharing Engine** with cryptographic access gates, rate limiting, HMAC-signed webhooks, and compound-indexed analytics.
 
+Live app: [gatekeep-6lhv.onrender.com](https://gatekeep-6lhv.onrender.com) · [Health check](https://gatekeep-6lhv.onrender.com/health)
+
 ## Browser App
 
 Open `/` for the GateKeep workspace. The frontend takes its cream, ink, orange, and monospace visual style from LinkNotes, with responsive layouts and a dark theme.
