@@ -1,7 +1,7 @@
-import { and, eq, isNull, desc } from "drizzle-orm";
+import { and, eq, isNull, desc, ilike } from "drizzle-orm";
 import { db } from "../../db/index";
 import { notes, attachments } from "../../db/schema";
-import { uploadBuffer, deleteAsset } from "../../lib/cloudinary";
+import { createSignedUrl, createStoragePath, deleteAsset, uploadBuffer } from "../../lib/storage";
 import { encryptText, decryptText } from "../../lib/crypto";
 import { prepareNoteContent } from "../../lib/noteContent";
 import type { CreateNoteInput, UpdateNoteInput } from "./notes.validation";
@@ -23,27 +23,32 @@ export async function createNote(userId: string, data: CreateNoteInput) {
   return note;
 }
 
-export async function listNotes(userId: string, page: number, limit: number) {
+export async function listNotes(userId: string, page: number, limit: number, search = "") {
   const offset = (page - 1) * limit;
 
   const rows = await db.query.notes.findMany({
-    where: and(eq(notes.userId, userId), isNull(notes.deletedAt)),
-    orderBy: desc(notes.createdAt),
+    where: and(eq(notes.userId, userId), isNull(notes.deletedAt),
+      search ? ilike(notes.title, `%${search.replace(/[%_\\]/g, "\\$&")}%`) : undefined),
+    orderBy: [desc(notes.isPinned), desc(notes.createdAt), desc(notes.id)],
     limit,
     offset,
     columns: {
       id: true,
       title: true,
       isEncrypted: true,
+      isPinned: true,
+      updatedAt: true,
       createdAt: true,
     },
-    with: { attachments: { columns: { id: true } } },
+    with: { attachments: { columns: { id: true } }, links: { columns: { readsCount: true } } },
   });
 
   return rows.map((n) => ({
     ...n,
     attachmentCount: n.attachments.length,
+    totalReads: n.links.reduce((total, link) => total + link.readsCount, 0),
     attachments: undefined,
+    links: undefined,
   }));
 }
 
@@ -54,13 +59,19 @@ export async function getNote(noteId: string, userId: string) {
       eq(notes.userId, userId),
       isNull(notes.deletedAt)
     ),
-    with: { attachments: true },
+    with: { attachments: true, links: { columns: { id: true, slug: true, readsCount: true, isBurned: true, expiresAt: true, maxReads: true } } },
   });
 
   if (!note) {
     throw Object.assign(new Error("Note not found"), { status: 404 });
   }
-  return note;
+  return {
+    ...note,
+    attachments: await Promise.all(note.attachments.map(async ({ storagePath, ...attachment }) => ({
+      ...attachment,
+      url: await createSignedUrl(storagePath),
+    }))),
+  };
 }
 
 export async function decryptNote(noteId: string, userId: string, passphrase: string) {
@@ -92,14 +103,17 @@ export async function updateNote(
     throw Object.assign(new Error("Note not found"), { status: 404 });
   }
 
-  const { content, isEncrypted } = prepareNoteContent(existing, data);
+  const contentUpdate = data.content !== undefined || data.newPassphrase !== undefined
+    ? prepareNoteContent(existing, data)
+    : {};
 
   const [updated] = await db
     .update(notes)
     .set({
-      title: data.title !== undefined ? data.title : existing.title,
-      content,
-      isEncrypted,
+      title: data.title,
+      ...contentUpdate,
+      isPinned: data.isPinned,
+      updatedAt: new Date(),
     })
     .where(
       and(eq(notes.id, noteId), eq(notes.userId, userId), isNull(notes.deletedAt))
@@ -112,7 +126,7 @@ export async function updateNote(
 export async function deleteNote(noteId: string, userId: string) {
   const note = await db.query.notes.findFirst({
     where: and(eq(notes.id, noteId), eq(notes.userId, userId), isNull(notes.deletedAt)),
-    with: { attachments: { columns: { cloudinaryPublicId: true, id: true } } },
+    with: { attachments: { columns: { storagePath: true, id: true } } },
   });
 
   if (!note) {
@@ -121,7 +135,7 @@ export async function deleteNote(noteId: string, userId: string) {
 
   await Promise.all(
     note.attachments.map((attachment) =>
-      deleteAsset(attachment.cloudinaryPublicId)
+      deleteAsset(attachment.storagePath)
     )
   );
 
@@ -150,23 +164,26 @@ export async function uploadAttachment(
     throw Object.assign(new Error("Note not found"), { status: 404 });
   }
 
-  const { url, publicId } = await uploadBuffer(file.buffer, `gatekeep/${userId}`);
+  const storagePath = createStoragePath(userId, noteId);
+  await uploadBuffer(storagePath, file.buffer, file.mimetype);
 
   try {
+    const url = await createSignedUrl(storagePath);
     const [attachment] = await db
       .insert(attachments)
       .values({
         noteId,
-        url,
-        cloudinaryPublicId: publicId,
+        storagePath,
+        originalName: file.originalname.slice(0, 255),
         mimeType: file.mimetype,
         sizeBytes: file.size,
       })
       .returning();
-    return attachment;
+    const { storagePath: _storagePath, ...response } = attachment;
+    return { ...response, url };
   } catch (error) {
     try {
-      await deleteAsset(publicId);
+      await deleteAsset(storagePath);
     } catch (cleanupError) {
       console.error("Failed to clean up uploaded asset after database error:", cleanupError);
     }
@@ -198,7 +215,7 @@ export async function deleteAttachment(
     throw Object.assign(new Error("Attachment not found"), { status: 404 });
   }
 
-  await deleteAsset(attachment.cloudinaryPublicId);
+  await deleteAsset(attachment.storagePath);
   await db
     .delete(attachments)
     .where(and(eq(attachments.id, attachmentId), eq(attachments.noteId, noteId)));

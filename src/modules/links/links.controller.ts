@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import * as LinksService from "./links.service";
 import { createLinkSchema, listLinksQuerySchema } from "./links.validation";
+import QRCode from "qrcode";
 
 const param = (val: string | string[]): string =>
   Array.isArray(val) ? val[0] : val;
@@ -32,6 +33,15 @@ export async function getLink(req: Request, res: Response, next: NextFunction) {
   } catch (err) {
     next(err);
   }
+}
+
+export async function getLinkQr(req: Request, res: Response, next: NextFunction) {
+  try {
+    const link = await LinksService.getLink(param(req.params.id), req.user!.id);
+    const origin = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+    const svg = await QRCode.toString(new URL(`/share/${link.slug}`, origin).href, { type: "svg", margin: 4, width: 240 });
+    res.type("image/svg+xml").send(svg);
+  } catch (error) { next(error); }
 }
 
 export async function deleteLink(req: Request, res: Response, next: NextFunction) {

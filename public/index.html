@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="GateKeep — private notes with controlled, measurable sharing.">
+  <title>GateKeep</title>
+  <link rel="stylesheet" href="/public/style.css">
+  <script type="module" src="/public/app.js"></script>
+</head>
+<body>
+  <noscript><div class="noscript">GateKeep needs JavaScript enabled to open the workspace or a shared note.</div></noscript>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <main id="public-share" class="share-shell" hidden>
+    <header class="share-header">
+      <a class="wordmark" href="/" aria-label="GateKeep home"><span>/</span> gatekeep</a>
+      <button class="icon-button" data-action="theme" type="button" aria-label="Toggle color theme">◐</button>
+    </header>
+    <section class="share-stage">
+      <article class="share-card" aria-live="polite">
+        <div class="eyebrow">Controlled access</div>
+        <div id="share-view"></div>
+      </article>
+      <aside class="share-aside">
+        <span class="index">01</span>
+        <h2>Share with<br>limits.</h2>
+        <p>GateKeep links can expire, burn after a read, ask for separate link and note passphrases, and record access analytics.</p>
+      </aside>
+    </section>
+  </main>
+
+  <main id="auth-screen" class="auth-shell" hidden>
+    <section class="auth-brand">
+      <a class="wordmark inverse" href="/"><span>/</span> gatekeep</a>
+      <div class="auth-copy">
+        <div class="eyebrow inverse">Private by design</div>
+        <h1>Write.<br>Lock.<br><em>Share.</em></h1>
+        <p>Notes with encrypted content, guarded links, limited reads, and useful access signals.</p>
+        <dl class="auth-stats">
+          <div><dt>∞</dt><dd>private notes</dd></div>
+          <div><dt>1×</dt><dd>burn links</dd></div>
+          <div><dt>AES</dt><dd>encrypted notes</dd></div>
+        </dl>
+      </div>
+      <div class="build-mark">GATEKEEP / PRIVATE WORKSPACE</div>
+    </section>
+    <section class="auth-panel">
+      <div class="auth-box">
+        <div class="auth-tabs" role="tablist" aria-label="Account access">
+          <button id="login-tab" class="tab active" role="tab" aria-selected="true" aria-controls="login-form" type="button">Sign in</button>
+          <button id="signup-tab" class="tab" role="tab" aria-selected="false" aria-controls="signup-form" type="button">Create account</button>
+        </div>
+        <div id="auth-message" class="form-message" role="alert" hidden></div>
+        <form id="login-form">
+          <div class="form-heading"><span>Welcome back</span><small>Open your private workspace.</small></div>
+          <label>Email<input id="login-email" name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label>
+          <label>Password<input id="login-password" name="password" type="password" autocomplete="current-password" required placeholder="Your password"></label>
+          <button class="button primary full" type="submit">Sign in <span>→</span></button>
+        </form>
+        <form id="signup-form" hidden>
+          <div class="form-heading"><span>Create account</span><small>Start with a private note.</small></div>
+          <div class="two-columns"><label>First name<input id="signup-first-name" autocomplete="given-name" maxlength="255" required></label><label>Last name <span class="optional">optional</span><input id="signup-last-name" autocomplete="family-name" maxlength="255"></label></div>
+          <label>Email<input id="signup-email" name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label>
+          <label>Password<input id="signup-password" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required placeholder="At least 8 characters"></label>
+          <button class="button primary full" type="submit">Create account <span>→</span></button>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <main id="app-screen" class="app-shell" hidden>
+    <header class="topbar">
+      <div class="topbar-start">
+        <button id="mobile-menu" class="icon-button mobile-only" type="button" aria-label="Open navigation" aria-expanded="false">☰</button>
+        <a class="wordmark inverse" href="/"><span>/</span> gatekeep</a>
+      </div>
+      <nav class="primary-nav" aria-label="Workspace">
+        <button class="nav-button active" data-view="notes" type="button">Notes</button>
+        <button class="nav-button" data-view="links" type="button">Links</button>
+        <button class="nav-button" data-view="webhooks" type="button">Webhooks</button>
+      </nav>
+      <div class="topbar-actions">
+        <span id="user-email" class="user-email"></span>
+        <button class="icon-button" data-action="theme" type="button" aria-label="Toggle color theme">◐</button>
+        <button id="logout-button" class="quiet-button" type="button">Log out</button>
+        <button id="shortcuts-button" class="icon-button" type="button" aria-label="Keyboard shortcuts">?</button>
+      </div>
+    </header>
+
+    <div id="notes-layout" class="workspace-layout">
+      <aside id="notes-sidebar" class="notes-sidebar">
+        <div class="sidebar-heading">
+          <div><span class="eyebrow">Workspace</span><h2>/ notes</h2></div>
+          <button id="new-note-button" class="square-button" type="button" title="New note" aria-label="New note">+</button>
+        </div>
+        <label class="search-field">
+          <span class="sr-only">Search all note titles</span>
+          <input id="notes-search" type="search" placeholder="/ search all notes" maxlength="255">
+        </label>
+        <div class="search-scope">Pinned notes first · search all titles</div>
+        <div id="notes-list" class="notes-list" aria-live="polite"></div>
+        <footer class="pager">
+          <span id="notes-page">Page 1</span>
+          <div>
+            <button id="notes-prev" class="page-button" type="button" aria-label="Previous notes page">←</button>
+            <button id="notes-next" class="page-button" type="button" aria-label="Next notes page">→</button>
+          </div>
+        </footer>
+      </aside>
+
+      <section id="note-workspace" class="note-workspace">
+        <div id="notes-empty" class="empty-state">
+          <span class="empty-glyph">⌗</span>
+          <h1>Your quiet corner</h1>
+          <p>Select a note from the list or start a new one.</p>
+          <button class="button primary" data-action="new-note" type="button">Create a note</button>
+        </div>
+
+        <form id="note-form" class="note-editor" hidden>
+          <header class="editor-toolbar">
+            <div class="editor-state"><span id="note-state-dot" class="state-dot"></span><span id="note-state">Saved</span></div>
+            <div class="toolbar-buttons">
+              <details class="note-actions"><summary class="button secondary">Actions</summary><div class="note-actions-menu">
+                <button id="pin-note-button" class="button secondary" type="button">Pin note</button>
+                <button id="duplicate-note-button" class="button secondary" type="button">Duplicate</button>
+                <button id="export-note-button" class="button secondary" type="button">Export Markdown</button>
+                <button id="share-note-button" class="button secondary" type="button">Share note</button>
+              </div></details>
+              <button id="unlock-note-button" class="button secondary" type="button" hidden>Unlock</button>
+              <button id="delete-note-button" class="button danger" type="button">Delete</button>
+              <button id="save-note-button" class="button primary" type="submit">Save note</button>
+            </div>
+          </header>
+          <div class="editor-scroll">
+            <div class="editor-fields">
+              <label class="sr-only" for="note-title">Note title</label>
+              <input id="note-title" class="title-input" maxlength="255" required placeholder="UNTITLED NOTE">
+              <div id="locked-note" class="locked-note" hidden>
+                <span class="lock-mark">◇</span>
+                <h2>This note is encrypted</h2>
+                <p>Unlock it to read or change the content. The note passphrase stays in this tab’s memory only.</p>
+                <button class="button primary" data-action="unlock-note" type="button">Unlock content</button>
+              </div>
+              <label class="sr-only" for="note-content">Note content</label>
+              <textarea id="note-content" class="content-input" maxlength="50000" required placeholder="Start writing…"></textarea>
+            </div>
+
+            <section id="encryption-panel" class="editor-panel">
+              <div class="panel-heading"><div><span class="eyebrow">Protection</span><h3>Note encryption</h3></div><span id="encryption-badge" class="badge">Plain text</span></div>
+              <p class="help-copy">A note passphrase encrypts the saved content. It is separate from an optional link passphrase that controls who may open a share link.</p>
+              <div id="new-encryption-controls" class="compact-fields">
+                <label class="check-row"><input id="encrypt-note" type="checkbox"><span>Encrypt this note</span></label>
+                <label id="note-passphrase-wrap" hidden>Note passphrase<input id="note-passphrase" type="password" minlength="4" maxlength="128" autocomplete="new-password" placeholder="At least 4 characters"></label>
+              </div>
+              <div id="existing-encryption-controls" class="compact-fields" hidden>
+                <label>Encryption change
+                  <select id="encryption-action">
+                    <option value="keep">Keep current passphrase</option>
+                    <option value="change">Change passphrase</option>
+                    <option value="remove">Remove encryption</option>
+                  </select>
+                </label>
+                <label id="new-passphrase-wrap" hidden>New note passphrase<input id="new-note-passphrase" type="password" minlength="4" maxlength="128" autocomplete="new-password" placeholder="At least 4 characters"></label>
+              </div>
+            </section>
+
+            <section id="note-sharing-panel" class="editor-panel" hidden>
+              <div class="panel-heading"><div><span class="eyebrow">Share</span><h3>Note links</h3></div><span id="note-total-reads" class="badge">0 reads</span></div>
+              <p class="help-copy">Create a link from Actions → Share note. Copy it or show its QR code here. Opening the recipient page does not use a read.</p>
+              <div id="note-share-links" class="card-list"></div>
+            </section>
+            <section id="attachments-panel" class="editor-panel" hidden>
+              <div class="panel-heading">
+                <div><span class="eyebrow">Files</span><h3>Attachments</h3></div>
+                <label class="button secondary file-button">Upload<input id="attachment-input" type="file" accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,video/mp4,video/webm,video/ogg,video/quicktime"></label>
+              </div>
+              <p class="help-copy" id="storage-status">Images, PDF, Word, and video · up to 30 MB. Files use private storage with download links that expire after 15 minutes. Anyone with a download link can use it until expiry, even after the share link burns. Note passphrases do not encrypt files.</p>
+              <div id="attachments-list" class="attachments-list"></div>
+            </section>
+          </div>
+          <footer class="editor-footer"><span id="note-meta">Unsaved draft</span><label class="autosave-control"><input id="autosave-enabled" type="checkbox" checked> Autosave</label><span id="note-count">0 words · 0 min read</span></footer>
+        </form>
+      </section>
+    </div>
+
+    <section id="links-view" class="management-view" hidden>
+      <header class="page-header">
+        <div><span class="eyebrow">Share controls</span><h1>Links</h1><p>Create guarded links and see how they are being used.</p></div>
+        <button class="button primary" data-action="open-create-link" type="button">New link</button>
+      </header>
+      <div id="links-message" class="inline-message" hidden></div>
+      <div id="links-list" class="card-list" aria-live="polite"></div>
+      <footer class="wide-pager"><button id="links-prev" class="button secondary" type="button">← Previous</button><span id="links-page">Page 1</span><button id="links-next" class="button secondary" type="button">Next →</button></footer>
+    </section>
+
+    <section id="webhooks-view" class="management-view" hidden>
+      <header class="page-header">
+        <div><span class="eyebrow">Automation</span><h1>Webhooks</h1><p>Receive signed events when a link is opened or burned.</p></div>
+        <button class="button primary" data-action="open-create-webhook" type="button">New webhook</button>
+      </header>
+      <div id="webhooks-message" class="inline-message" hidden></div>
+      <div id="webhooks-list" class="card-list" aria-live="polite"></div>
+      <footer class="wide-pager"><button id="webhooks-prev" class="button secondary" type="button">← Previous</button><span id="webhooks-page">Page 1</span><button id="webhooks-next" class="button secondary" type="button">Next →</button></footer>
+    </section>
+  </main>
+
+  <dialog id="unlock-dialog" class="dialog">
+    <form id="unlock-form">
+      <header><span class="eyebrow">Encrypted note</span><h2>Unlock content</h2></header>
+      <p>This is the passphrase used to encrypt the note itself. It is not stored by this app.</p>
+      <label>Note passphrase<input id="unlock-passphrase" type="password" autocomplete="current-password" required autofocus></label>
+      <div class="dialog-actions"><button class="button secondary" data-close-dialog type="button">Cancel</button><button class="button primary" type="submit">Unlock</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="create-link-dialog" class="dialog wide-dialog">
+    <form id="create-link-form">
+      <header><span class="eyebrow">Controlled sharing</span><h2>Create a link</h2></header>
+      <label>Saved note<select id="link-note-id" required></select></label>
+      <div class="two-columns">
+        <label>Expires at <span class="optional">optional</span><input id="link-expires" type="datetime-local"></label>
+        <label>Maximum reads <span class="optional">optional</span><input id="link-max-reads" type="number" min="1" max="1000000" inputmode="numeric" placeholder="Unlimited"></label>
+      </div>
+      <label class="check-row"><input id="link-burn" type="checkbox"><span>Burn after one successful read</span></label>
+      <label>Link passphrase <span class="optional">optional</span><input id="link-passphrase" type="password" minlength="4" maxlength="128" autocomplete="new-password" placeholder="At least 4 characters"></label>
+      <p class="field-note">The link passphrase controls access to this URL. If the note is encrypted, the reader will also need the note’s separate encryption passphrase.</p>
+      <label>Notify webhook <span class="optional">optional</span><select id="link-webhook-id"><option value="">No webhook</option></select></label>
+      <div class="dialog-actions"><button class="button secondary" data-close-dialog type="button">Cancel</button><button class="button primary" type="submit">Create link</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="analytics-dialog" class="dialog analytics-dialog">
+    <div id="analytics-content"></div>
+    <div class="dialog-actions"><button class="button secondary" data-close-dialog type="button">Close</button></div>
+  </dialog>
+
+  <dialog id="create-webhook-dialog" class="dialog">
+    <form id="create-webhook-form">
+      <header><span class="eyebrow">Event delivery</span><h2>Create webhook</h2></header>
+      <label>HTTPS endpoint<input id="webhook-url" type="url" required pattern="https://.*" placeholder="https://example.com/gatekeep"></label>
+      <p class="field-note">GateKeep signs deliveries with a secret. Reveal and copy it after creation when you are ready to store it safely.</p>
+      <div class="dialog-actions"><button class="button secondary" data-close-dialog type="button">Cancel</button><button class="button primary" type="submit">Create webhook</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="webhook-dialog" class="dialog wide-dialog">
+    <div id="webhook-detail"></div>
+    <div class="dialog-actions"><button class="button secondary" data-close-dialog type="button">Close</button></div>
+  </dialog>
+  <dialog id="qr-dialog" class="dialog">
+    <header><span class="eyebrow">Share link</span><h2>Scan to open</h2></header>
+    <img id="qr-image" class="qr-image" alt="QR code for this share link" width="240" height="240">
+    <a id="qr-url" class="qr-url" target="_blank" rel="noopener noreferrer"></a>
+    <p>Scanning opens the recipient page. A read is used only after pressing Open note.</p>
+    <div class="dialog-actions"><button class="button secondary" data-close-dialog type="button">Close</button></div>
+  </dialog>
+  <dialog id="shortcuts-dialog" class="dialog">
+    <header><span class="eyebrow">Workspace</span><h2>Keyboard shortcuts</h2></header>
+    <dl class="shortcuts-list"><dt>Ctrl / ⌘ + S</dt><dd>Save note</dd><dt>Ctrl / ⌘ + N</dt><dd>New note</dd><dt>Ctrl / ⌘ + P</dt><dd>Pin / unpin</dd><dt>Ctrl / ⌘ + D</dt><dd>Duplicate note</dd><dt>Ctrl / ⌘ + K</dt><dd>Copy an active link, or create one</dd><dt>Escape</dt><dd>Close a dialog</dd></dl>
+    <p>Revoke all refresh sessions to sign out other devices when their current access tokens expire (normally within 15 minutes).</p>
+    <button id="logout-all-button" class="button danger" type="button">Log out all sessions</button>
+    <div class="dialog-actions"><button class="button secondary" data-close-dialog type="button">Close</button></div>
+  </dialog>
+</body>
+</html>

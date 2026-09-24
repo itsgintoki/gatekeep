@@ -11,6 +11,7 @@ RUN npm ci
 
 # Copy source code
 COPY src/ ./src/
+COPY public/ ./public/
 
 # Compile TypeScript to dist/
 RUN npm run build

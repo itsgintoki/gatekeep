@@ -8,6 +8,20 @@
       "when": 1788197718362,
       "tag": "0000_steep_meggan",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790182465606,
+      "tag": "0001_linknotes_features",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790184506402,
+      "tag": "0002_married_rogue",
+      "breakpoints": true
     }
   ]
 }

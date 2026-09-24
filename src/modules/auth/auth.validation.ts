@@ -2,6 +2,8 @@
 import { z } from "zod";
 
 export const signupSchema = z.object({
+  firstName: z.string().trim().max(255).optional(),
+  lastName: z.string().trim().max(255).optional(),
   email: z
     .string()
     .email("Invalid email format")

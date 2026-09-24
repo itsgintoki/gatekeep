@@ -14,6 +14,8 @@ import { relations } from "drizzle-orm";
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
   email: varchar("email", { length: 255 }).notNull().unique(),
+  firstName: varchar("first_name", { length: 255 }).default("").notNull(),
+  lastName: varchar("last_name", { length: 255 }).default("").notNull(),
   passwordHash: text("password_hash").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -47,6 +49,8 @@ export const notes = pgTable("notes", {
   title: varchar("title", { length: 255 }).notNull(),
   content: text("content").notNull(),
   isEncrypted: boolean("is_encrypted").default(false).notNull(),
+  isPinned: boolean("is_pinned").default(false).notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -56,8 +60,8 @@ export const attachments = pgTable("attachments", {
   noteId: uuid("note_id")
     .notNull()
     .references(() => notes.id, { onDelete: "cascade" }),
-  url: text("url").notNull(),
-  cloudinaryPublicId: text("cloudinary_public_id").notNull(),
+  storagePath: text("storage_path").notNull(),
+  originalName: text("original_name").default("Attachment").notNull(),
   mimeType: varchar("mime_type", { length: 100 }).notNull(),
   sizeBytes: integer("size_bytes").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
