@@ -6,7 +6,7 @@ Live app: [gatekeep-6lhv.onrender.com](https://gatekeep-6lhv.onrender.com) · [H
 
 ## Browser App
 
-Open `/` for the GateKeep workspace. The frontend takes its cream, ink, orange, and monospace visual style from LinkNotes, with responsive layouts and a dark theme.
+Open `/` for the GateKeep workspace. The frontend uses a cream, ink, orange, and monospace visual style, with responsive layouts and a dark theme.
 
 * Sign up and sign in, then create, edit, encrypt, unlock, and delete notes.
 * Search all note titles, pin notes, autosave existing notes, duplicate content, export Markdown, and see word counts and reading time.
@@ -136,15 +136,23 @@ Set these server-side environment variables in Render:
 | `SUPABASE_SERVICE_KEY` | Supabase secret/service-role key, never sent to the browser |
 | `SUPABASE_STORAGE_BUCKET` | `gatekeep` |
 
+For verified TLS, download the certificate from the official **Database Settings** certificate link in Supabase and add it to Render as a secret file named `prod-ca-2021.crt`. Render mounts it at `/etc/secrets/prod-ca-2021.crt`. Set the `DATABASE_URL` query options to `sslmode=verify-full&sslrootcert=/etc/secrets/prod-ca-2021.crt`, replacing any existing `sslmode` or `sslrootcert` options.
+
 Create a **private** `gatekeep` storage bucket with a 30 MB limit and the supported MIME types. The API authorizes users and links before issuing temporary file URLs. Do not make the bucket public. `/config` reports whether upload credentials are configured; `/health` is the deployment health check.
 
 Gatekeep uses its own `gatekeep` schema and `gatekeep_migrations` history. It does not use Supabase Auth or expose database credentials to the frontend. Existing standalone installations can retain `DATABASE_SCHEMA=public`. Never commit secrets.
 
 #### Moving an existing Gatekeep database
 
-The one-time transfer command is `node dist/db/copyDatabase.js`. Set `DATABASE_URL` to the new destination and `SOURCE_DATABASE_URL` to the old database; the source schema defaults to `gatekeep`. Stop writes to the old app during transfer. The command migrates an empty destination, copies Gatekeep records transactionally, checks counts, and records completion so a restart does not import twice. It refuses to overwrite a nonempty destination or copy the shared `public` schema. It reads one table into memory at a time, so use PostgreSQL backup tools for larger deployments.
+Run the one-time transfer manually from a CLI after building the application:
 
-Existing Cloudinary attachments require a separate object migration before applying the storage migration; the migration refuses to proceed if attachment rows remain. The original hosted Gatekeep instance had uploads disabled. After verifying a transfer, restore the ordinary `npm start` command and remove `SOURCE_DATABASE_URL` before retiring the source database.
+```bash
+DATABASE_URL='<new-database-url>' SOURCE_DATABASE_URL='<old-database-url>' node dist/db/copyDatabase.js
+```
+
+The source schema defaults to `gatekeep`. Stop writes to the old app during transfer. The command migrates an empty destination, copies Gatekeep records transactionally, checks counts, and records completion so it cannot import twice. It refuses to overwrite a nonempty destination or copy the shared `public` schema. It reads one table into memory at a time, so use PostgreSQL backup tools for larger deployments. Keep this import out of the service startup command and remove `SOURCE_DATABASE_URL` after a successful transfer.
+
+Existing Cloudinary attachments require a separate object migration before applying the storage migration; the migration refuses to proceed if attachment rows remain. The original hosted Gatekeep instance had uploads disabled. After verifying a transfer, retire the source database.
 
 ---
 

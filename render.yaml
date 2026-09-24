@@ -5,7 +5,7 @@ services:
     plan: free
     region: oregon
     buildCommand: npm ci --include=dev && npm run build
-    startCommand: 'if [ -n "$SOURCE_DATABASE_URL" ]; then node dist/db/copyDatabase.js || exit 1; fi; npm start'
+    startCommand: npm start
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
