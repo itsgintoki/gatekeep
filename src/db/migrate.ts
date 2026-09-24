@@ -13,6 +13,12 @@ export async function runMigrations(): Promise<void> {
 
   // Keep committed migrations unchanged for existing public-schema installs.
   // The isolated copy also redirects the initial migration's qualified FKs.
+  await pool.query(`CREATE SCHEMA IF NOT EXISTS "${databaseSchema}"`);
+  const currentSchema = (await pool.query<{ schema: string | null }>("SELECT current_schema() AS schema")).rows[0]?.schema;
+  if (currentSchema !== databaseSchema) {
+    throw new Error(`Database search path resolved to ${currentSchema ?? "no schema"}; expected ${databaseSchema}`);
+  }
+
   const folder = mkdtempSync(path.join(tmpdir(), "gatekeep-migrations-"));
   try {
     cpSync(source, folder, { recursive: true });
@@ -20,7 +26,6 @@ export async function runMigrations(): Promise<void> {
       const target = path.join(folder, file);
       writeFileSync(target, readFileSync(target, "utf8").replaceAll('"public".', `"${databaseSchema}".`));
     }
-    await pool.query(`CREATE SCHEMA IF NOT EXISTS "${databaseSchema}"`);
     await migrate(db, { migrationsFolder: folder, migrationsSchema: `${databaseSchema}_migrations` });
   } finally {
     rmSync(folder, { recursive: true, force: true });
