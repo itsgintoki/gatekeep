@@ -1,15 +1,20 @@
 import "dotenv/config";
 import { Pool, type PoolClient } from "pg";
+import format from "pg-format";
 
 const tables = ["users", "refresh_tokens", "webhooks", "notes", "attachments", "links", "access_logs", "webhook_deliveries"];
 
+/**
+ * Postgres cannot bind identifiers, so schema, table, and column names are checked against a
+ * strict allowlist here and quoted for SQL by pg-format's %I placeholder at each call site.
+ */
 function identifier(value: string): string {
   if (!/^[a-z_][a-z0-9_]{0,62}$/.test(value)) throw new Error("Invalid database identifier");
-  return `"${value}"`;
+  return value;
 }
 
 async function count(client: PoolClient, schema: string, table: string): Promise<number> {
-  const result = await client.query(`SELECT count(*)::integer AS count FROM ${identifier(schema)}.${identifier(table)}`);
+  const result = await client.query(format("SELECT count(*)::integer AS count FROM %I.%I", identifier(schema), identifier(table)));
   return result.rows[0].count;
 }
 
@@ -21,13 +26,15 @@ async function requireEmptyTarget(client: PoolClient, schema: string): Promise<v
 
 async function copyTable(source: PoolClient, target: PoolClient, from: string, to: string, table: string): Promise<number> {
   // ponytail: one demo-sized table in memory; use pg_dump/restore for large databases.
-  const rows = await source.query(`SELECT row_to_json(t)::text AS record FROM ${identifier(from)}.${identifier(table)} t ORDER BY id`);
+  const rows = await source.query(format("SELECT row_to_json(t)::text AS record FROM %I.%I t ORDER BY id", identifier(from), identifier(table)));
   for (const { record } of rows.rows) {
     const row = JSON.parse(record) as Record<string, unknown>;
     const keys = Object.keys(row);
-    const fields = keys.map(identifier).join(", ");
     const placeholders = keys.map((_, index) => `$${index + 1}`).join(", ");
-    await target.query(`INSERT INTO ${identifier(to)}.${identifier(table)} (${fields}) VALUES (${placeholders})`, keys.map(key => row[key]));
+    await target.query(
+      format("INSERT INTO %I.%I (%I) VALUES (%s)", identifier(to), identifier(table), keys.map(identifier), placeholders),
+      keys.map(key => row[key]),
+    );
   }
   if (await count(target, to, table) !== rows.rowCount) throw new Error(`Row count mismatch for ${table}`);
   return rows.rowCount ?? 0;
@@ -38,12 +45,12 @@ export async function copyDatabase(sourcePool: Pool, targetPool: Pool, from: str
   if (from === "public") throw new Error("Refusing to import the shared public schema");
   const source = await sourcePool.connect();
   const target = await targetPool.connect();
-  const history = `${identifier(`${to}_migrations`)}."__database_import"`;
+  const history = format("%I.%I", identifier(`${to}_migrations`), "__database_import");
   try {
     await source.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
     await target.query("BEGIN");
-    await target.query(`CREATE TABLE IF NOT EXISTS ${history} (id integer PRIMARY KEY CHECK (id = 1), completed_at timestamptz NOT NULL DEFAULT now())`);
-    if ((await target.query(`SELECT id FROM ${history}`)).rowCount) {
+    await target.query(format("CREATE TABLE IF NOT EXISTS %s (id integer PRIMARY KEY CHECK (id = 1), completed_at timestamptz NOT NULL DEFAULT now())", history));
+    if ((await target.query(format("SELECT id FROM %s", history))).rowCount) {
       await target.query("COMMIT");
       return null;
     }
@@ -51,7 +58,7 @@ export async function copyDatabase(sourcePool: Pool, targetPool: Pool, from: str
     if (await count(source, from, "attachments")) throw new Error("Source contains files; migrate storage objects before copying the database");
     const counts: Record<string, number> = {};
     for (const table of tables) counts[table] = await copyTable(source, target, from, to, table);
-    await target.query(`INSERT INTO ${history} (id) VALUES (1)`);
+    await target.query(format("INSERT INTO %s (id) VALUES (1)", history));
     await target.query("COMMIT");
     return counts;
   } catch (error) {

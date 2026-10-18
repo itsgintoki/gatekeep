@@ -34,7 +34,6 @@
     <section class="auth-brand">
       <a class="wordmark inverse" href="/"><span>/</span> gatekeep</a>
       <div class="auth-copy">
-        <div class="eyebrow inverse">Private by design</div>
         <h1>Write.<br>Lock.<br><em>Share.</em></h1>
         <p>Notes with encrypted content, guarded links, limited reads, and useful access signals.</p>
         <dl class="auth-stats">
@@ -91,7 +90,7 @@
     <div id="notes-layout" class="workspace-layout">
       <aside id="notes-sidebar" class="notes-sidebar">
         <div class="sidebar-heading">
-          <div><span class="eyebrow">Workspace</span><h2>/ notes</h2></div>
+          <div><h2>/ notes</h2></div>
           <button id="new-note-button" class="square-button" type="button" title="New note" aria-label="New note">+</button>
         </div>
         <label class="search-field">
@@ -147,7 +146,7 @@
             </div>
 
             <section id="encryption-panel" class="editor-panel">
-              <div class="panel-heading"><div><span class="eyebrow">Protection</span><h3>Note encryption</h3></div><span id="encryption-badge" class="badge">Plain text</span></div>
+              <div class="panel-heading"><div><h3>Note encryption</h3></div><span id="encryption-badge" class="badge">Plain text</span></div>
               <p class="help-copy">A note passphrase encrypts the saved content. It is separate from an optional link passphrase that controls who may open a share link.</p>
               <div id="new-encryption-controls" class="compact-fields">
                 <label class="check-row"><input id="encrypt-note" type="checkbox"><span>Encrypt this note</span></label>
@@ -166,13 +165,13 @@
             </section>
 
             <section id="note-sharing-panel" class="editor-panel" hidden>
-              <div class="panel-heading"><div><span class="eyebrow">Share</span><h3>Note links</h3></div><span id="note-total-reads" class="badge">0 reads</span></div>
+              <div class="panel-heading"><div><h3>Note links</h3></div><span id="note-total-reads" class="badge">0 reads</span></div>
               <p class="help-copy">Create a link from Actions → Share note. Copy it or show its QR code here. Opening the recipient page does not use a read.</p>
               <div id="note-share-links" class="card-list"></div>
             </section>
             <section id="attachments-panel" class="editor-panel" hidden>
               <div class="panel-heading">
-                <div><span class="eyebrow">Files</span><h3>Attachments</h3></div>
+                <div><h3>Attachments</h3></div>
                 <label class="button secondary file-button">Upload<input id="attachment-input" type="file" accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,video/mp4,video/webm,video/ogg,video/quicktime"></label>
               </div>
               <p class="help-copy" id="storage-status">Images, PDF, Word, and video · up to 30 MB. Files use private storage with download links that expire after 15 minutes. Anyone with a download link can use it until expiry, even after the share link burns. Note passphrases do not encrypt files.</p>
@@ -186,7 +185,7 @@
 
     <section id="links-view" class="management-view" hidden>
       <header class="page-header">
-        <div><span class="eyebrow">Share controls</span><h1>Links</h1><p>Create guarded links and see how they are being used.</p></div>
+        <div><h1>Links</h1><p>Create guarded links and see how they are being used.</p></div>
         <button class="button primary" data-action="open-create-link" type="button">New link</button>
       </header>
       <div id="links-message" class="inline-message" hidden></div>
@@ -196,7 +195,7 @@
 
     <section id="webhooks-view" class="management-view" hidden>
       <header class="page-header">
-        <div><span class="eyebrow">Automation</span><h1>Webhooks</h1><p>Receive signed events when a link is opened or burned.</p></div>
+        <div><h1>Webhooks</h1><p>Receive signed events when a link is opened or burned.</p></div>
         <button class="button primary" data-action="open-create-webhook" type="button">New webhook</button>
       </header>
       <div id="webhooks-message" class="inline-message" hidden></div>
@@ -207,7 +206,7 @@
 
   <dialog id="unlock-dialog" class="dialog">
     <form id="unlock-form">
-      <header><span class="eyebrow">Encrypted note</span><h2>Unlock content</h2></header>
+      <header><h2>Unlock content</h2></header>
       <p>This is the passphrase used to encrypt the note itself. It is not stored by this app.</p>
       <label>Note passphrase<input id="unlock-passphrase" type="password" autocomplete="current-password" required autofocus></label>
       <div class="dialog-actions"><button class="button secondary" data-close-dialog type="button">Cancel</button><button class="button primary" type="submit">Unlock</button></div>
@@ -216,7 +215,7 @@
 
   <dialog id="create-link-dialog" class="dialog wide-dialog">
     <form id="create-link-form">
-      <header><span class="eyebrow">Controlled sharing</span><h2>Create a link</h2></header>
+      <header><h2>Create a link</h2></header>
       <label>Saved note<select id="link-note-id" required></select></label>
       <div class="two-columns">
         <label>Expires at <span class="optional">optional</span><input id="link-expires" type="datetime-local"></label>
@@ -237,7 +236,7 @@
 
   <dialog id="create-webhook-dialog" class="dialog">
     <form id="create-webhook-form">
-      <header><span class="eyebrow">Event delivery</span><h2>Create webhook</h2></header>
+      <header><h2>Create webhook</h2></header>
       <label>HTTPS endpoint<input id="webhook-url" type="url" required pattern="https://.*" placeholder="https://example.com/gatekeep"></label>
       <p class="field-note">GateKeep signs deliveries with a secret. Reveal and copy it after creation when you are ready to store it safely.</p>
       <div class="dialog-actions"><button class="button secondary" data-close-dialog type="button">Cancel</button><button class="button primary" type="submit">Create webhook</button></div>
@@ -249,14 +248,14 @@
     <div class="dialog-actions"><button class="button secondary" data-close-dialog type="button">Close</button></div>
   </dialog>
   <dialog id="qr-dialog" class="dialog">
-    <header><span class="eyebrow">Share link</span><h2>Scan to open</h2></header>
+    <header><h2>Scan to open</h2></header>
     <img id="qr-image" class="qr-image" alt="QR code for this share link" width="240" height="240">
     <a id="qr-url" class="qr-url" target="_blank" rel="noopener noreferrer"></a>
     <p>Scanning opens the recipient page. A read is used only after pressing Open note.</p>
     <div class="dialog-actions"><button class="button secondary" data-close-dialog type="button">Close</button></div>
   </dialog>
   <dialog id="shortcuts-dialog" class="dialog">
-    <header><span class="eyebrow">Workspace</span><h2>Keyboard shortcuts</h2></header>
+    <header><h2>Keyboard shortcuts</h2></header>
     <dl class="shortcuts-list"><dt>Ctrl / ⌘ + S</dt><dd>Save note</dd><dt>Ctrl / ⌘ + N</dt><dd>New note</dd><dt>Ctrl / ⌘ + P</dt><dd>Pin / unpin</dd><dt>Ctrl / ⌘ + D</dt><dd>Duplicate note</dd><dt>Ctrl / ⌘ + K</dt><dd>Copy an active link, or create one</dd><dt>Escape</dt><dd>Close a dialog</dd></dl>
     <p>Revoke all refresh sessions to sign out other devices when their current access tokens expire (normally within 15 minutes).</p>
     <button id="logout-all-button" class="button danger" type="button">Log out all sessions</button>
