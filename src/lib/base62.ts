@@ -1,3 +1,14 @@
+// ============================================================================
+// src/lib/base62.ts — SHORT SLUG HELPERS (public link IDs like "aZ3kP9q")
+// ----------------------------------------------------------------------------
+// generateSlug(7): 7 random bytes mapped mod 62 -> ~41 bits of entropy
+// (≈ 2 trillion combos). Collisions are checked in DB with 5 retries
+// (see links.service.ts createLink). Charset avoids ambiguous chars? No —
+// it keeps 0-9a-zA-Z for max density + URL-safety (no escaping needed).
+// encode/decodeBase62: numeric <-> string conversion (currently used by
+// tests / future numeric IDs; slug generation itself uses randomBytes).
+// NOTE: bytes[i] % 62 has tiny modulo bias; acceptable for non-crypto IDs.
+// ============================================================================
 import crypto from "crypto";
 
 const BASE62_CHARSET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";

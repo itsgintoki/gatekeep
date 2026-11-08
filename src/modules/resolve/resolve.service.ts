@@ -1,3 +1,31 @@
+// ============================================================================
+// [Phase 2 — Core domain] src/modules/resolve/resolve.service.ts — BURN ENGINE
+// See NAVIGATION.md Phase 2.4. WHAT: atomic read-count + burn + log + outbox.
+// WHY conditional UPDATE...RETURNING: concurrent clicks → exactly one winner.
+// WHY decrypt-before-consume: typo must not burn a 1-read link.
+// DESIGN: GET probes free, POST spends; 404 unknown vs 410 gone.
+// ----------------------------------------------------------------------------
+// Read this file to understand GateKeep's core guarantee: a maxReads=1 link
+// dies after exactly one successful view, even under concurrent clicks.
+// How:
+//  loadAvailableLink: fetches link+note, rejects burned (410), lazily burns
+//    expired links (sets isBurned on first sighting after expiresAt).
+//  resolveLink: (1) link passphrase via argon2.verify — missing -> return
+//    {requiresPassphrase:true} WITHOUT spending a read; wrong -> 401.
+//    (2) decrypt note content IN MEMORY first — a bad notePassphrase throws
+//    BEFORE consumeLink, so typos never burn a one-read link. (3) sign
+//    attachment URLs (4) consumeLink.
+//  consumeLink (the critical transaction): ONE db.transaction does
+//    UPDATE links SET readsCount+1, isBurned=CASE(reads>=maxReads) WHERE
+//    not-burned AND not-expired AND reads<maxReads RETURNING — the WHERE
+//    makes concurrent second clicks match 0 rows -> 410. Then INSERTs the
+//    accessLogs row (with parsed UA + referrerHost) and queues
+//    link.accessed (+ link.burned if it just died) into webhook_deliveries
+//    for the background worker. All-or-nothing: a failed insert rolls back
+//    the counter increment.
+// Discriminated union ResolveResult (requiresPassphrase true/false) lets the
+// frontend narrow types safely.
+// ============================================================================
 import argon2 from "argon2";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../db/index";
@@ -70,12 +98,13 @@ async function loadAvailableLink(slug: string): Promise<AvailableLink> {
   });
 
   if (!link || !link.note || link.note.deletedAt !== null) {
-    throw httpError(404, "Link not found");
+    throw httpError(404, "Link not found"); // Unknown slug OR soft-deleted note — same response.
   }
   if (link.isBurned) {
-    throw httpError(410, "This link has been burned and is no longer accessible");
+    throw httpError(410, "This link has been burned and is no longer accessible"); // 410 Gone: was valid, now dead.
   }
   if (link.expiresAt && link.expiresAt.getTime() <= Date.now()) {
+    // Lazy expiry: flip to burned on first access after deadline (no cron needed).
     await db
       .update(links)
       .set({ isBurned: true })
@@ -86,6 +115,8 @@ async function loadAvailableLink(slug: string): Promise<AvailableLink> {
   return { ...link, note: link.note };
 }
 
+// Normalises Referer header to just the hostname for GROUP BY analytics
+// (full URLs would fragment counts; unparsable values kept, truncated).
 function extractReferrerHost(referrer: string | undefined): string | null {
   if (!referrer) {
     return null;
@@ -97,6 +128,8 @@ function extractReferrerHost(referrer: string | undefined): string | null {
   }
 }
 
+// Shapes the outbox payload: {event, timestamp, data}. The worker in
+// lib/webhook.ts JSON-stringifies + HMAC-signs this exact object.
 function createDelivery(
   webhookId: string,
   event: WebhookEvent,
@@ -111,9 +144,12 @@ function createDelivery(
 }
 
 async function consumeLink(link: AvailableLink, ctx: AccessContext) {
-  const parsedUserAgent = parseUserAgent(ctx.userAgent);
+  const parsedUserAgent = parseUserAgent(ctx.userAgent); // Pre-parse for analytics columns.
 
+  // ATOMIC SECTION: counter + burn flag + log + outbox succeed or all roll back.
   return db.transaction(async (tx) => {
+    // Conditional UPDATE = compare-and-swap: only a live link matches; the
+    // RETURNING row proves THIS request won the race. Losers get 0 rows -> 410.
     const [updatedLink] = await tx
       .update(links)
       .set({
@@ -198,14 +234,16 @@ export async function resolveLink(
   const link = await loadAvailableLink(slug);
   if (link.passphraseHash) {
     if (!passphrase) {
-      return { requiresPassphrase: true, slug };
+      return { requiresPassphrase: true, slug }; // Challenge, don't count a read.
     }
     if (!(await argon2.verify(link.passphraseHash, passphrase))) {
-      throw httpError(401, "Invalid passphrase");
+      throw httpError(401, "Invalid passphrase"); // Wrong secret: no read spent.
     }
   }
 
   // Verify decryption before spending a read, especially for one-read links.
+  // If note is encrypted but no notePassphrase supplied, content stays
+  // ciphertext (isEncrypted:true signals the UI to ask for it next).
   const decrypt = link.note.isEncrypted && notePassphrase !== undefined;
   const content = decrypt ? decryptText(link.note.content, notePassphrase) : link.note.content;
   const signedAttachments = await Promise.all(link.note.attachments.map(async ({ storagePath, ...attachment }) => ({

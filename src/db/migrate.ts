@@ -1,3 +1,15 @@
+// ============================================================================
+// src/db/migrate.ts — RUNS SQL MIGRATIONS AT BOOT (called from index.ts)
+// ----------------------------------------------------------------------------
+// Two modes:
+//  - public schema (default dev/prod): migrate ./drizzle folder directly.
+//  - custom DATABASE_SCHEMA (isolated tests/tenants): copy ./drizzle to a
+//    temp dir, rewrite `"public".` qualifiers to the target schema, then
+//    migrate there with a separate migrations bookkeeping schema.
+// Why the rewrite? Committed SQL hardcodes "public" for FK references; the
+// temp copy avoids mutating the checked-in files while keeping existing
+// public installs untouched.
+// ============================================================================
 import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

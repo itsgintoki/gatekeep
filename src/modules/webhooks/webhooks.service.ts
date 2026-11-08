@@ -1,3 +1,17 @@
+// ============================================================================
+// [Phase 3 — Hardening] src/modules/webhooks/webhooks.service.ts — REGISTRY
+// See NAVIGATION.md Phase 3.1. WHAT: SSRF-gate → mint gk_sec_ → store.
+// WHY gate before insert: fail closed. WHY list omits secret: logs safe.
+// DESIGN: delete SET NULLs links (links survive, go quiet).
+// ----------------------------------------------------------------------------
+// createWebhook: SSRF-gate (assertSafeWebhookUrl DNS-resolves + rejects
+//   private IPs) BEFORE insert — fail closed, never store a dangerous URL.
+//   Then mints a gk_sec_ secret (used for HMAC signing, see lib/webhook.ts).
+// listWebhooks: deliberately OMITS secret (list responses get logged/cached;
+//   fetch single webhook when you need the secret).
+// get/delete: ownership-scoped (userId) -> 404 otherwise. Delete cascades to
+//   deliveries but SET NULLs links.webhookId (links survive, just go quiet).
+// ============================================================================
 import { and, eq, desc } from "drizzle-orm";
 import { db } from "../../db/index";
 import { webhooks } from "../../db/schema";

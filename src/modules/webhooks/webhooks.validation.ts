@@ -1,3 +1,5 @@
+// First line of defence: must be a URL with https: scheme. The service then
+// calls assertSafeWebhookUrl() for DNS + private-network (SSRF) checks.
 import { z } from "zod";
 
 export const createWebhookSchema = z.object({

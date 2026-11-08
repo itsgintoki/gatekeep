@@ -1,3 +1,20 @@
+// ============================================================================
+// [Phase 1 — Foundation] src/middleware/errorHandler.ts — CENTRAL ERROR MAP
+// See NAVIGATION.md Phase 1.4. WHAT: Multer/Zod/{status} → HTTP. WHY one place:
+// controllers stay thin, no leaked stacks in prod. DESIGN: {status} convention
+// avoids custom error classes.
+// ----------------------------------------------------------------------------
+// All controllers forward errors via next(err) -> they land here.
+// Translates:
+//   MulterError (file upload) -> 400 (friendly size message)
+//   ZodError (validation)     -> 400 + per-field { field, message } list
+//   HttpError (Object.assign(new Error, {status})) -> that status + message
+//   anything else             -> 500 "Internal server error" (hides internals
+//                                in prod; includes stack in dev for debugging).
+// CONCEPT — error.status convention: services throw
+// `Object.assign(new Error("..."), { status: 404 })` instead of custom
+// error classes. This handler reads .status/.statusCode, clamps to 400-599.
+// ============================================================================
 import { Request, Response, NextFunction } from "express";
 import { ZodError } from "zod";
 import { MulterError } from "multer";

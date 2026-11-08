@@ -1,5 +1,8 @@
+// Zod schemas for notes. updateNoteSchema uses .refine() to reject empty
+// PATCH bodies (at least one field must change) — avoids no-op writes.
 import { z } from "zod";
 
+// Create: passphrase optional — its presence decides isEncrypted (service encrypts).
 export const createNoteSchema = z.object({
   title: z.string().trim().min(1, "Title is required").max(255),
   content: z.string().trim().min(1, "Content is required").max(50000),
@@ -27,6 +30,8 @@ export const updateNoteSchema = z
     { message: "At least one update must be provided" }
   );
 
+// newPassphrase: string = set/rotate, null = strip encryption, undefined = keep.
+// currentPassphrase proves ownership of existing ciphertext (see noteContent.ts).
 export const decryptNoteSchema = z.object({
   passphrase: z.string().min(1, "Passphrase is required"),
 });

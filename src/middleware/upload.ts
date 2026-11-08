@@ -1,5 +1,19 @@
+// ============================================================================
+// src/middleware/upload.ts — MULTER FILE-UPLOAD GUARD (memory storage)
+// ----------------------------------------------------------------------------
+// Used as: router.post("/:id/attachments", upload.single("file"), controller)
+//  - memoryStorage: file lands in req.file.buffer (no temp files on disk).
+//    Service then streams it to Supabase (see notes.service uploadAttachment).
+//  - limits.fileSize 30MB: oversize -> MulterError LIMIT_FILE_SIZE -> 400
+//    via errorHandler.
+//  - fileFilter allowlist: images, PDF, Word, common video. Rejects executables
+//    (basic malware vector reduction; NOT a full antivirus).
+// CONCEPT — multer `fileFilter` + `limits` run BEFORE your controller, so
+// invalid files never reach service/DB code.
+// ============================================================================
 import multer from "multer";
 
+// Keep in sync with public UI accept list + /config maxUploadBytes.
 const ALLOWED_MIME_TYPES = [
   "image/jpeg",
   "image/png",

@@ -1,3 +1,21 @@
+// ============================================================================
+// [Phase 1 — Foundation] src/lib/jwt.ts — SHORT-LIVED ACCESS + ROTATING REFRESH
+// See NAVIGATION.md Phase 1.4. WHAT: 15m access {sub,email}, 7d refresh {sub,jti}.
+// WHY split: stateless fast path + revocable long session. DESIGN: rotation
+// narrows stolen-token window; hashToken() = DB leak ≠ usable bearer.
+// ----------------------------------------------------------------------------
+// Token split (standard hardening):
+//   accessToken  (15m, HS256, {sub:userId,email}) — sent as Bearer/cookie,
+//                  verified on every authed request (stateless, no DB hit).
+//   refreshToken (7d, HS256, {sub,jti}) — long-lived, but stored HASHED in
+//                  refresh_tokens table so it can be revoked (logout).
+// CONCEPT — rotation (see auth.service refreshTokens_rotate): each use
+// atomically revokes the old token and issues a new pair. Stolen refresh
+// tokens thus have a narrow reuse window; replay of an old token fails.
+// hashToken (SHA-256): DB stores only the hash, like a password — a dump
+// doesn't yield usable bearer tokens. parseTTLtoMs keeps cookie/DB expiry
+// in sync with the JWT `expiresIn` string ("15m"/"7d").
+// ============================================================================
 import jwt, { SignOptions } from "jsonwebtoken";
 import crypto from "crypto";
 

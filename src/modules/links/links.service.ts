@@ -1,3 +1,23 @@
+// ============================================================================
+// [Phase 2 — Core domain] src/modules/links/links.service.ts — LINK LIFECYCLE
+// See NAVIGATION.md Phase 2.3. WHAT: slug mint + passphrase hash + analytics.
+// WHY hash (not encrypt) passphrase: verify-only. WHY 5× slug retry: 7-char
+// collisions rare but possible. DESIGN: never return hash, only hasPassphrase.
+// ----------------------------------------------------------------------------
+// createLink: verifies note belongs to user -> verifies webhook belongs to
+//   user (if any) -> argon2-hashes optional passphrase (same params as
+//   passwords) -> generates collision-checked slug (5 tries) -> INSERT.
+//   Response maps passphraseHash -> hasPassphrase (never leak the hash).
+// listLinks: two-step (notes for titles, then links via inArray(noteIds))
+//   because links carry no title themselves; noteTitleMap joins them in JS.
+// getLink/deleteLink: ownership enforced by joining link.note and comparing
+//   note.userId (404 if cross-user, avoiding user-enumeration).
+// getLinkAnalytics: SEVEN parallel queries (Promise.all) over accessLogs:
+//   totals + unique IPs, GROUP BYs for date/browser/os/device/referrer
+//   (raw SQL fragments via drizzle sql`` for to_char/COALESCE), plus latest
+//   15 logs. IPs partially masked (1.2.3.***), IPv6 shown fully (can't mask
+//   the same way). toBreakdown() converts [{label,count}] -> {label:count}.
+// ============================================================================
 import argon2 from "argon2";
 import { and, eq, isNull, desc, inArray, sql } from "drizzle-orm";
 import { db } from "../../db/index";
@@ -41,9 +61,12 @@ export async function createLink(userId: string, data: CreateLinkInput) {
 
   let passphraseHash: string | null = null;
   if (data.passphrase) {
+    // Hash (not encrypt): verification only needs argon2.verify on unlock.
     passphraseHash = await argon2.hash(data.passphrase, ARGON2_OPTIONS);
   }
 
+  // Short slugs can collide; retry with a fresh random value (5 attempts is
+  // plenty at 7 chars / ~2T space). DB unique constraint is the final guard.
   let slug = "";
   let attempts = 0;
   while (attempts < 5) {
@@ -72,7 +95,7 @@ export async function createLink(userId: string, data: CreateLinkInput) {
     id: link.id,
     noteId: link.noteId,
     slug: link.slug,
-    hasPassphrase: Boolean(link.passphraseHash),
+    hasPassphrase: Boolean(link.passphraseHash), // Don't expose the hash itself.
     expiresAt: link.expiresAt,
     maxReads: link.maxReads,
     readsCount: link.readsCount,
@@ -185,10 +208,13 @@ export async function getLinkAnalytics(linkId: string, userId: string) {
     },
   });
 
+  // Same ownership guard as getLink: only the note owner sees analytics.
   if (!link || !link.note || link.note.userId !== userId || link.note.deletedAt !== null) {
     throw Object.assign(new Error("Link not found"), { status: 404 });
   }
 
+  // SQL label expressions: COALESCE turns NULLs into "Unknown" buckets so
+  // GROUP BY never drops rows; to_char buckets clicks per calendar day.
   const dateLabel = sql<string>`to_char(${accessLogs.accessedAt}, 'YYYY-MM-DD')`;
   const browserLabel = sql<string>`COALESCE(${accessLogs.browser}, 'Unknown')`;
   const osLabel = sql<string>`COALESCE(${accessLogs.os}, 'Unknown')`;
@@ -244,14 +270,14 @@ export async function getLinkAnalytics(linkId: string, userId: string) {
     }),
   ]);
 
-  const summary = summaryRows[0] ?? { totalClicks: 0, uniqueVisitors: 0 };
+  const summary = summaryRows[0] ?? { totalClicks: 0, uniqueVisitors: 0 }; // No views yet -> zeros.
   return {
     linkId: link.id,
     slug: link.slug,
     noteTitle: link.note.title,
     summary: {
-      totalClicks: Number(summary.totalClicks),
-      uniqueVisitors: Number(summary.uniqueVisitors),
+      totalClicks: Number(summary.totalClicks), // pg count() returns string; coerce.
+      uniqueVisitors: Number(summary.uniqueVisitors), // DISTINCT ip count.
       isBurned: link.isBurned,
       readsCount: link.readsCount,
       maxReads: link.maxReads,
@@ -264,9 +290,9 @@ export async function getLinkAnalytics(linkId: string, userId: string) {
       topReferrers: toBreakdown(referrerRows),
     },
     recentAccesses: recentLogs.map((log) => {
-      const parsed = parseUserAgent(log.userAgent);
+      const parsed = parseUserAgent(log.userAgent); // Backfill if row predates parsing.
       return {
-        ip: log.ip.includes(":") ? log.ip : log.ip.replace(/\.\d+$/, ".***"),
+        ip: log.ip.includes(":") ? log.ip : log.ip.replace(/\.\d+$/, ".***"), // Mask last IPv4 octet (privacy).
         browser: log.browser ?? parsed.browser,
         os: log.os ?? parsed.os,
         device: log.device ?? parsed.device,

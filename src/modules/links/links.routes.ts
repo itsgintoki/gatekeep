@@ -1,3 +1,17 @@
+// ============================================================================
+// src/modules/links/* — SHARE-LINK MANAGEMENT (owner's private view)
+// ----------------------------------------------------------------------------
+// Contrast with modules/resolve/* (public unlock by slug). Here the OWNER
+// manages links for their notes (all routes authenticate):
+//   POST /links/            create slug for a note (+optional passphrase,
+//                           expiry, maxReads, webhookId)
+//   GET  /links/            paginated list with noteTitle denormalised in JS
+//   GET  /links/:id         single link (ownership checked via joined note)
+//   GET  /links/:id/analytics  dashboard: totals + GROUP BY breakdowns
+//   GET  /links/:id/qr       SVG QR code for /share/:slug (uses `qrcode` lib)
+//   DELETE /links/:id        revoke (cascades accessLogs via FK)
+// Never returns passphraseHash — only hasPassphrase:boolean (hash stays secret).
+// ============================================================================
 import { Router } from "express";
 import * as LinksController from "./links.controller";
 import { authenticate } from "../../middleware/authenticate";

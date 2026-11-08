@@ -1,3 +1,5 @@
+// Validation for share links. expiresAt uses z.coerce.date() (accepts ISO
+// strings) + refine() to force future dates; maxReads bounds burn-after-read.
 import { z } from "zod";
 
 export const createLinkSchema = z.object({

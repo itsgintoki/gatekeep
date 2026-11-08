@@ -12,13 +12,21 @@ interface RateLimitOptions {
 }
 
 interface ClientRecord {
-  timestamps: number[];
+  timestamps: number[]; // Every request timestamp for this IP within the window.
 }
 
 /**
  * In-memory sliding window rate limiter.
  * Tracks precise timestamp arrays per IP to accurately throttle bursts
  * without boundary reset artifacts found in fixed-window algorithms.
+ *
+ * CONCEPT — sliding vs fixed window: fixed windows reset counters at :00,
+ * letting 2x burst through at the boundary (59th + 1st second). Sliding
+ * window filters to [now-windowMs, now] on every request, so bursts are
+ * always counted. Trade-off: per-IP arrays in memory (fine for single
+ * instance; use Redis for multi-instance prod).
+ * Emits IETF RateLimit-* headers + 429 with Retry-After when exceeded.
+ * Keyed by req.ip — hence TRUST_PROXY must be correct in app.ts.
  */
 export function createRateLimiter(options: RateLimitOptions): RateLimitMiddleware {
   const { windowMs, max, message = "Too many requests, please try again later." } = options;
@@ -57,6 +65,7 @@ export function createRateLimiter(options: RateLimitOptions): RateLimitMiddlewar
       (record.timestamps[0] + windowMs - now) / 1000
     );
 
+    // Set standard IETF RateLimit headers
     res.setHeader("RateLimit-Limit", max);
     res.setHeader("RateLimit-Remaining", remaining);
     res.setHeader("RateLimit-Reset", resetTimeSeconds);
@@ -76,6 +85,8 @@ export function createRateLimiter(options: RateLimitOptions): RateLimitMiddlewar
 }
 
 // ── Tiered Limiters ──────────────────────────────────────────
+// Different abuse profiles per surface: auth is brute-force sensitive,
+// resolve is public/scrapable, general API is higher-traffic but authed.
 
 /** Strict limiter on auth routes (10 attempts / 15 minutes) to prevent password brute-forcing */
 export const authLimiter = createRateLimiter({

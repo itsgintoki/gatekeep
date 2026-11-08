@@ -8,6 +8,7 @@ import {
 const param = (val: string | string[]): string =>
   Array.isArray(val) ? val[0] : val;
 
+// Thin adapters like notes/links controllers: parse -> service(req.user!.id).
 export async function createWebhook(req: Request, res: Response, next: NextFunction) {
   try {
     const data = createWebhookSchema.parse(req.body);

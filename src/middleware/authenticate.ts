@@ -1,3 +1,19 @@
+// ============================================================================
+// [Phase 1 — Foundation] src/middleware/authenticate.ts — JWT GATEKEEPER
+// See NAVIGATION.md Phase 1.4. WHAT: Bearer OR cookie → req.user. WHY two
+// sources: API clients + browser. DESIGN: TOKEN_EXPIRED code triggers refresh.
+// ----------------------------------------------------------------------------
+// Usage: router.use(authenticate) (see notes/links/webhooks routes).
+// Accepts token from EITHER:
+//   1. Authorization: Bearer <jwt>  (API clients / tests)
+//   2. access_token cookie          (browser frontend, httpOnly)
+// On success attaches req.user = { id, email } for downstream
+// controllers/services to scope DB queries to the owner.
+// On failure: 401 immediately (distinguishes expiry via code=TOKEN_EXPIRED
+// so the frontend knows to call /auth/refresh).
+// CONCEPT — global augmentation below teaches TypeScript that Express.Request
+// now optionally carries .user after this middleware runs.
+// ============================================================================
 import { Request, Response, NextFunction } from "express";
 import { verifyAccessToken } from "../lib/jwt";
 

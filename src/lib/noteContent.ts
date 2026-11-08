@@ -1,3 +1,19 @@
+// ============================================================================
+// src/lib/noteContent.ts — PURE STATE MACHINE FOR ENCRYPTION TRANSITIONS
+// ----------------------------------------------------------------------------
+// Centralises "how does content+passphrase evolve on PATCH /notes/:id" so
+// notes.service.ts stays thin. Pure function (no DB) — easily unit-tested.
+// Matrix:
+//   unencrypted + no newPassphrase        -> stays plaintext (maybe new text)
+//   unencrypted + newPassphrase           -> encrypt (becomes encrypted)
+//   encrypted + no currentPassphrase      -> 400 (can't verify ownership)
+//   encrypted + current -> decrypt, apply text, re-encrypt with
+//                          newPassphrase ?? current (rotate), or null -> strip
+//                          encryption (return to plaintext).
+// CONCEPT: re-encryption is required because AES ciphertext can't be patched
+// in place — you must decrypt to plaintext, swap text, encrypt fresh (new
+// random salt/IV each time, see crypto.ts).
+// ============================================================================
 import { decryptText, encryptText } from "./crypto";
 
 export interface NoteContentState {

@@ -1,6 +1,24 @@
+// ============================================================================
+// [Phase 2 — Core domain] src/lib/storage.ts — SUPABASE STORAGE WRAPPER
+// See NAVIGATION.md Phase 2.2. WHAT: metadata in PG, bytes in Supabase.
+// WHY signed URLs (15m): private bucket stays private. WHY upsert:false:
+// never silently overwrite. DESIGN: 503 when unconfigured (degrade, not crash).
+// ----------------------------------------------------------------------------
+// DB holds only metadata (attachments table); this module talks to Supabase:
+//   uploadBuffer(path, buffer, mime) — writes object (upsert:false = never
+//                                      silently overwrite).
+//   createSignedUrl(path) — 15-min time-limited URL so private files can be
+//                           viewed without making the bucket public.
+//   deleteAsset(path)     — removes on note/attachment delete.
+// Path scheme: "<userId>/<noteId>/<uuid>" (user-scoped, unguessable).
+// CONCEPT — lazy cached client: created once per credential set; throws
+// 503 (not 500) when env is missing so /config + UI can degrade gracefully
+// ("uploads unavailable" instead of crash). storageOrigin() feeds Helmet CSP.
+// ============================================================================
 import { randomUUID } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
+// Signed URLs expire quickly to limit leak window if a URL is shared.
 const SIGNED_URL_TTL_SECONDS = 15 * 60;
 
 let cachedClient: SupabaseClient | undefined;

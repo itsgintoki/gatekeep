@@ -1,3 +1,14 @@
+// ============================================================================
+// src/lib/userAgent.ts — TINY ZERO-DEP UA PARSER (for link analytics)
+// ----------------------------------------------------------------------------
+// parseUserAgent(raw UA string) -> { browser, os, device }. Rule-list based:
+// checks lowercase UA for token substrings (BOT_TOKENS first so crawlers
+// aren't misclassified as Chrome). Used in TWO places:
+//   1. resolve.service consumeLink — stamps each accessLogs row at view time.
+//   2. links.service getLinkAnalytics — backfills display names for old rows.
+// Deliberately coarse (no versions) — enough for dashboard breakdowns
+// without pulling in ua-parser-js. Unknown UAs -> "Unknown"/"unknown".
+// ============================================================================
 export interface ParsedUserAgent {
   browser: string;
   os: string;

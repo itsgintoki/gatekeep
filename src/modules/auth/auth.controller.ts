@@ -2,9 +2,14 @@ import { Request, Response, NextFunction } from "express";
 import * as AuthService from "./auth.service";
 import { signupSchema, loginSchema } from "./auth.validation";
 
+// Mirror the JWT expiries in lib/jwt.ts so cookies expire together with tokens.
 const ACCESS_TOKEN_TTL_MS = 15 * 60 * 1000;
 const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+// CONCEPT — httpOnly + Secure + SameSite=Strict cookies: JS can't read them
+// (XSS can't steal tokens), they only go over HTTPS in prod, and aren't sent
+// on cross-site navigations (CSRF mitigation). Refresh cookie is scoped to
+// path /auth so browsers don't attach it to every API call — least privilege.
 function setAuthCookies(res: Response, accessToken: string, refreshToken: string) {
   const isProduction = process.env.NODE_ENV === "production";
 
@@ -29,9 +34,11 @@ function clearAuthCookies(res: Response) {
   res.clearCookie("access_token");
   res.clearCookie("refresh_token", { path: "/auth" });
   // Remove cookies issued before logout could receive the refresh token.
-  res.clearCookie("refresh_token", { path: "/auth/refresh" });
+  res.clearCookie("refresh_token", { path: "/auth/refresh" }); // Legacy path cleanup.
 }
 
+// Each handler: validate (Zod) -> service (DB/crypto) -> cookies+JSON.
+// try/catch + next(err) forwards to errorHandler; never res.send twice.
 export async function signup(req: Request, res: Response, next: NextFunction) {
   try {
     const { email, password, firstName, lastName } = signupSchema.parse(req.body);
@@ -56,6 +63,7 @@ export async function login(req: Request, res: Response, next: NextFunction) {
 
 export async function refresh(req: Request, res: Response, next: NextFunction) {
   try {
+    // Accept from cookie (browser) OR x-refresh-token header (mobile/API).
     const rawToken = req.cookies?.refresh_token || req.headers["x-refresh-token"];
     if (!rawToken || typeof rawToken !== "string") {
       res.status(401).json({ message: "No refresh token provided" });

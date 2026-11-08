@@ -1,3 +1,25 @@
+// ============================================================================
+// [Phase 3 — Hardening] src/lib/webhookHttp.ts — SSRF-HARDENED HTTPS CLIENT
+// See NAVIGATION.md Phase 3.2. WHAT: BlockList + DNS check + safeLookup +
+// redirect re-validation. WHY: user URLs could hit metadata/private nets.
+// DESIGN: fail closed before insert; TOCTOU closed by connect-time lookup.
+// ----------------------------------------------------------------------------
+// PROBLEM (SSRF): webhooks POST to user-supplied URLs. Without guards an
+// attacker could register http://169.254.169.254/... (cloud metadata) or
+// http://localhost:5432 and make YOUR server probe the private network.
+// DEFENSES here (read in order):
+//  1. parseWebhookUrl: HTTPS-only, no user:pass credentials, valid URL.
+//  2. BlockList of private/reserved IPv4+IPv6 CIDRs (RFC1918, loopback,
+//     link-local, multicast, TEST-NET, ULA, etc.).
+//  3. resolvePublicAddresses: DNS-lookup the hostname and reject if ANY
+//     returned A/AAAA record is blocked (stops DNS pointing at 127.0.0.1).
+//  4. safeLookup (custom dns lookup for https.request): re-validates at
+//     socket-connect time — closes the DNS-rebinding/TOCTOU gap where DNS
+//     changes between check (3) and actual connect.
+//  5. postWebhook redirect loop: follows max 3 redirects, re-validating each
+//     Location (attackers often bounce via a public URL -> internal target).
+// TIMEOUT 5s prevents worker threads hanging on slow endpoints.
+// ============================================================================
 import type { LookupAddress } from "node:dns";
 import { lookup } from "node:dns/promises";
 import { request } from "node:https";
@@ -6,6 +28,7 @@ import { BlockList, isIP, type LookupFunction } from "node:net";
 const MAX_REDIRECTS = 3;
 const REQUEST_TIMEOUT_MS = 5_000;
 
+// Private/reserved ranges that a webhook must NEVER be able to reach.
 const blockedAddresses = new BlockList();
 
 for (const [network, prefix] of [

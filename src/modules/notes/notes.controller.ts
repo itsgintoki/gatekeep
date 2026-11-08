@@ -7,9 +7,12 @@ import {
   listNotesQuerySchema,
 } from "./notes.validation";
 
+// Express 5 may give string|string[] for params/query; normalise to single string.
 const param = (val: string | string[]): string =>
   Array.isArray(val) ? val[0] : val;
 
+// Thin HTTP adapters: validate -> call service with req.user!.id (set by
+// authenticate middleware) -> JSON. `!` is safe: route guarantees login.
 export async function createNote(req: Request, res: Response, next: NextFunction) {
   try {
     const data = createNoteSchema.parse(req.body);

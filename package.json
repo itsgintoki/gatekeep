@@ -35,7 +35,6 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
     "pg": "^8.23.0",
-    "pg-format": "^1.0.4",
     "qrcode": "^1.5.4",
     "zod": "^4.4.3"
   },
@@ -47,7 +46,6 @@
     "@types/multer": "^2.2.0",
     "@types/node": "^26.3.0",
     "@types/pg": "^8.23.1",
-    "@types/pg-format": "^1.0.5",
     "@types/qrcode": "^1.5.6",
     "drizzle-kit": "^0.31.10",
     "tsx": "^4.23.12",

@@ -1,3 +1,23 @@
+// ============================================================================
+// [Phase 1 — Foundation] src/modules/auth/auth.service.ts — PASSWORD + SESSION
+// See NAVIGATION.md Phase 1.4. WHAT: argon2id hash/verify + token rotation.
+// WHY dummy hash on unknown email: timing-attack defence. WHY txn on rotate:
+// no double-use race. DESIGN: store only SHA-256(refresh), access stays
+// stateless 15m (revocation trade-off, messaged on logout-all).
+// ----------------------------------------------------------------------------
+// argon2id (type:2) with 64MB/3 passes: memory-hard password hashing —
+// expensive for GPUs/ASICs to brute-force, unlike bcrypt/sha256.
+// Flow highlights:
+//  signup: check duplicate -> argon2.hash -> INSERT user -> issueTokenPair
+//  login:  fetch user -> argon2.verify; on miss, still hash a dummy value
+//          (constant-time defence: prevents user-enumeration via timing).
+//  refreshTokens_rotate: verify JWT sig -> atomic UPDATE...isRevoked=true
+//          + INSERT new token inside ONE db.transaction (no double-use race).
+//          Old token replay -> 401 (reuse detection by design).
+//  logout/logoutAll: mark stored hash(es) revoked. Access tokens remain valid
+//          up to 15m (stateless trade-off, messaged to the user).
+// Only SHA-256(token) is persisted — see lib/jwt.ts hashToken.
+// ============================================================================
 import argon2, { HashOptions } from "argon2";
 import { eq, and, gt } from "drizzle-orm";
 import { db } from "../../db/index";
@@ -10,6 +30,7 @@ import {
   type RefreshTokenPayload,
 } from "../../lib/jwt";
 
+// OWASP-ish argon2id params: raise memoryCost/timeCost as hardware improves.
 const ARGON2_OPTIONS: HashOptions = {
   type: 2,
   memoryCost: 65536,
@@ -46,6 +67,9 @@ export async function login(email: string, password: string) {
   });
 
   if (!user) {
+    // Dummy hash keeps response time ~equal whether the email exists or not,
+    // so attackers can't probe valid accounts by measuring latency. Same 401
+    // message either way (no "user not found" vs "wrong password" oracle).
     await argon2.hash("dummy_constant_time_op", ARGON2_OPTIONS);
     throw Object.assign(new Error("Invalid credentials"), { status: 401 });
   }
@@ -62,6 +86,8 @@ export async function login(email: string, password: string) {
   };
 }
 
+// Rotation: single-use refresh tokens. The UPDATE...RETURNING only matches
+// a live (unrevoked, unexpired) row; concurrent reuse finds 0 rows -> 401.
 export async function refreshTokens_rotate(rawRefreshToken: string) {
   let payload: RefreshTokenPayload;
   try {
@@ -123,6 +149,8 @@ export async function logoutAll(userId: string) {
   await db.update(refreshTokens).set({ isRevoked: true }).where(eq(refreshTokens.userId, userId));
 }
 
+// Helper: mints both tokens and persists the refresh-token hash for later
+// revocation checks. Called on signup + login + every successful rotation.
 async function issueTokenPair(userId: string, email: string) {
   const accessToken = signAccessToken({ sub: userId, email });
   const { token: refreshToken, expiresAt } = signRefreshToken(userId);

@@ -1,9 +1,30 @@
+// ============================================================================
+// [Phase 3 — Hardening] src/lib/webhook.ts — OUTBOX DISPATCHER
+// See NAVIGATION.md Phase 3.1. WHAT: claim (SKIP LOCKED) → HMAC POST → ack.
+// WHY Postgres-as-queue: no extra infra, survives restarts. WHY backoff 5×:
+// transient failures heal; dead-letter after 5 for audit. DESIGN: multi-worker
+// safe via lockedAt + attempts++ in one CTE.
+// ----------------------------------------------------------------------------
+// Called every second from index.ts. Implements reliable delivery without
+// a message queue (Postgres as queue):
+//   claimWebhookDeliveries: single SQL CTE claims up to `limit` due rows
+//     with FOR UPDATE SKIP LOCKED (multi-instance safe: two workers never
+//     grab the same row; stale locks >5min are reclaimable after crash).
+//     Claiming also does attempts++ atomically.
+//   deliverClaimedWebhook: loads webhook url+secret, HMAC-signs JSON body
+//     (X-GateKeep-Signature-256, verifiable by receiver), POSTs via
+//     lib/webhookHttp.ts, marks deliveredAt on 2xx.
+//   recordDeliveryFailure: exponential backoff 0.5s,1s,2s,4s,8s (capped 60s)
+//     up to MAX_DELIVERY_ATTEMPTS=5, then failedAt (dead-letter, kept for audit).
+// Queued from resolve.service.ts consumeLink (link.accessed / link.burned).
+// ============================================================================
 import crypto from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../db/index";
 import { webhookDeliveries, webhooks } from "../db/schema";
 import { postWebhook } from "./webhookHttp";
 
+// Events a receiver can subscribe to (stored in deliveries.event).
 export type WebhookEvent = "link.accessed" | "link.burned";
 
 export interface WebhookPayload extends Record<string, unknown> {
@@ -20,12 +41,16 @@ interface ClaimedDelivery extends Record<string, unknown> {
   attempts: number;
 }
 
+// How many POST attempts before giving up (then failedAt is set).
 const MAX_DELIVERY_ATTEMPTS = 5;
 
+// Prefix helps users recognise the secret in dashboards (like sk_/ghp_).
 export function generateWebhookSecret(): string {
   return "gk_sec_" + crypto.randomBytes(32).toString("hex");
 }
 
+// HMAC-SHA256 over the exact JSON body. Receiver recomputes with the shared
+// secret and compares (timing-safe) to prove GateKeep sent it untampered.
 export function signWebhookPayload(payload: string, secret: string): string {
   const hmac = crypto.createHmac("sha256", secret);
   hmac.update(payload);

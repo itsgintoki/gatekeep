@@ -9,7 +9,7 @@ const param = (val: string | string[]): string =>
 export async function createLink(req: Request, res: Response, next: NextFunction) {
   try {
     const data = createLinkSchema.parse(req.body);
-    const link = await LinksService.createLink(req.user!.id, data);
+    const link = await LinksService.createLink(req.user!.id, data); // req.user from authenticate.
     res.status(201).json(link);
   } catch (err) {
     next(err);
@@ -38,9 +38,10 @@ export async function getLink(req: Request, res: Response, next: NextFunction) {
 export async function getLinkQr(req: Request, res: Response, next: NextFunction) {
   try {
     const link = await LinksService.getLink(param(req.params.id), req.user!.id);
+    // QR encodes the PUBLIC share URL (APP_URL in prod, else request host).
     const origin = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
     const svg = await QRCode.toString(new URL(`/share/${link.slug}`, origin).href, { type: "svg", margin: 4, width: 240 });
-    res.type("image/svg+xml").send(svg);
+    res.type("image/svg+xml").send(svg); // SVG: sharp at any size, no binary storage.
   } catch (error) { next(error); }
 }
 
