@@ -1,10 +1,75 @@
 import { describe, it } from "node:test";
-import assert from "node:assert";
-import type { Request, Response } from "express";
+import assert from "node:assert/strict";
+import type { NextFunction, Request, Response } from "express";
+import { MulterError } from "multer";
+import { errorHandler } from "../src/middleware/errorHandler";
 import { createRateLimiter } from "../src/middleware/rateLimiter";
 
-describe("Sliding Window Rate Limiter Middleware", () => {
-  it("should allow requests under the limit and set rate limit headers", () => {
+interface CapturedResponse {
+  status?: number;
+  body?: unknown;
+}
+
+function captureError(error: unknown): CapturedResponse {
+  const captured: CapturedResponse = {};
+  const request = { method: "GET", path: "/test" } as unknown as Request;
+  const response = {
+    status(status: number) {
+      captured.status = status;
+      return this;
+    },
+    json(body: unknown) {
+      captured.body = body;
+      return this;
+    },
+  } as unknown as Response;
+  const next = (() => {}) as NextFunction;
+  const originalConsoleError = console.error;
+  console.error = () => {};
+  try {
+    errorHandler(error, request, response, next);
+  } finally {
+    console.error = originalConsoleError;
+  }
+  return captured;
+}
+
+describe("Production error responses", () => {
+  it("reports oversized attachments as a client error", () => {
+    assert.deepStrictEqual(captureError(new MulterError("LIMIT_FILE_SIZE")), {
+      status: 400,
+      body: { message: "Files must be 30 MB or smaller" },
+    });
+  });
+
+  it("hides internal error details", () => {
+    const previousEnvironment = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      const captured = captureError(new Error("database password leaked"));
+      assert.strictEqual(captured.status, 500);
+      assert.deepStrictEqual(captured.body, { message: "Internal server error" });
+    } finally {
+      if (previousEnvironment === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = previousEnvironment;
+      }
+    }
+  });
+
+  it("preserves expected client-facing errors", () => {
+    const captured = captureError(
+      Object.assign(new Error("Link not found"), { status: 404 })
+    );
+    assert.strictEqual(captured.status, 404);
+    assert.ok(captured.body && typeof captured.body === "object" && "message" in captured.body);
+    assert.strictEqual(captured.body.message, "Link not found");
+  });
+});
+
+describe("Sliding-window rate limiter middleware", () => {
+  it("allows requests under the limit and sets rate limit headers", () => {
     const limiter = createRateLimiter({ windowMs: 1000, max: 3 });
 
     let statusCalled = false;
@@ -26,25 +91,21 @@ describe("Sliding Window Rate Limiter Middleware", () => {
       nextCalled = true;
     };
 
-    // 1st request
     limiter(req, res, next);
     assert.strictEqual(nextCalled, true);
     assert.strictEqual(headers["RateLimit-Remaining"], 2);
     assert.strictEqual(statusCalled, false);
 
-    // 2nd request
     nextCalled = false;
     limiter(req, res, next);
     assert.strictEqual(nextCalled, true);
     assert.strictEqual(headers["RateLimit-Remaining"], 1);
 
-    // 3rd request
     nextCalled = false;
     limiter(req, res, next);
     assert.strictEqual(nextCalled, true);
     assert.strictEqual(headers["RateLimit-Remaining"], 0);
 
-    // 4th request -> blocked!
     nextCalled = false;
     let blockedJson: unknown;
     const blockRes = {
@@ -62,7 +123,7 @@ describe("Sliding Window Rate Limiter Middleware", () => {
     } as unknown as Response;
 
     limiter(req, blockRes, next);
-    assert.strictEqual(nextCalled, false, "next() must not be called when rate limit is exceeded");
+    assert.strictEqual(nextCalled, false, "next() must not be called when the rate limit is exceeded");
     assert.ok(blockedJson && typeof blockedJson === "object" && "code" in blockedJson);
     assert.strictEqual(blockedJson.code, "RATE_LIMIT_EXCEEDED");
   });
