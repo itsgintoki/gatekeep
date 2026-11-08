@@ -179,7 +179,6 @@ erDiagram
         uuid id PK
         text email
         text password_hash
-        enum role
     }
     notes {
         uuid id PK
@@ -232,7 +231,7 @@ erDiagram
         uuid user_id FK
         text token_hash
         timestamptz expires_at
-        timestamptz revoked_at
+        boolean is_revoked
     }
 ```
 
@@ -341,7 +340,7 @@ Run the one-time transfer manually from a CLI after building the application:
 DATABASE_URL='<new-database-url>' SOURCE_DATABASE_URL='<old-database-url>' node dist/db/copyDatabase.js
 ```
 
-The source schema defaults to `gatekeep`. Stop writes to the old app during transfer. The command migrates an empty destination, copies records transactionally, checks counts, and records completion so it cannot import twice. It refuses to overwrite a nonempty destination or copy the shared `public` schema. It reads one table into memory at a time, so use PostgreSQL backup tools for larger deployments. Keep this import out of the service startup command and remove `SOURCE_DATABASE_URL` after a successful transfer.
+The source schema defaults to `gatekeep`. Stop writes to the old app during transfer. The command migrates an empty destination, copies records transactionally in batches, checks counts, and records completion so it cannot import twice. It refuses to overwrite a nonempty destination or copy the shared `public` schema. Keep this import out of the service startup command and remove `SOURCE_DATABASE_URL` after a successful transfer.
 
 Existing Cloudinary attachments require a separate object migration before applying the storage migration; the migration refuses to proceed if attachment rows remain. The original hosted GateKeep instance had uploads disabled. After verifying a transfer, retire the source database.
 
@@ -353,7 +352,7 @@ Existing Cloudinary attachments require a separate object migration before apply
 - **Analytics are aggregate-first.** Owners get link analytics, not a per-access audit trail.
 - **No email/calendar/MFA/SSO/malware scanning.** These are production integrations, not demo features.
 - **Audit logs are append-only by application convention,** not by database permissions.
-- **Copy CLI is demo-scale.** It loads one table at a time into memory; use `pg_dump`/`pg_restore` for large databases.
+- **Copy CLI streams in batches** (1,000 rows per page) inside one transaction; for very large databases, `pg_dump`/`pg_restore` is still faster.
 
 A good next milestone is a note-owner audit trail plus a background cleanup worker, then a multi-instance rate-limit store.
 
