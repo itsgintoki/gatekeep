@@ -65,7 +65,6 @@ export function createRateLimiter(options: RateLimitOptions): RateLimitMiddlewar
       (record.timestamps[0] + windowMs - now) / 1000
     );
 
-    // Set standard IETF RateLimit headers
     res.setHeader("RateLimit-Limit", max);
     res.setHeader("RateLimit-Remaining", remaining);
     res.setHeader("RateLimit-Reset", resetTimeSeconds);

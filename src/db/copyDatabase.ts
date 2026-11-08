@@ -9,8 +9,7 @@
 //  - Refuses if source has attachments (object storage must move separately).
 //  - Idempotent: a `__database_import` marker row makes re-runs a no-op.
 //  - Source read in REPEATABLE READ READ ONLY txn = consistent snapshot.
-// NOTE: loads one table into memory — fine for demo sizes, use pg_dump for
-// large DBs (see comment inside copyTable).
+//  - Streams each table in keyset-paginated batches, so memory stays bounded.
 // ============================================================================
 import "dotenv/config";
 import { Pool, type PoolClient } from "pg";
@@ -18,6 +17,9 @@ import { Pool, type PoolClient } from "pg";
 // Copy order matters only for readability; FKs aren't enforced mid-copy
 // inside a single transaction, but keep parents before children anyway.
 const tables = ["users", "refresh_tokens", "webhooks", "notes", "attachments", "links", "access_logs", "webhook_deliveries"];
+
+// Rows are fetched in pages so a large table never lands in memory at once.
+const batchSize = 1000;
 
 // identifier(): quotes SQL identifiers AND whitelists them — prevents
 // SQL injection since schema/table names can't be parameterized ($1).
@@ -27,6 +29,7 @@ function identifier(value: string): string {
 }
 
 async function count(client: PoolClient, schema: string, table: string): Promise<number> {
+  // fixmyslop-ignore[sec/sql-injection] identifiers are allowlisted and quoted by identifier(); no user-controlled values are interpolated.
   const result = await client.query(`SELECT count(*)::integer AS count FROM ${identifier(schema)}.${identifier(table)}`);
   return result.rows[0].count;
 }
@@ -38,17 +41,39 @@ async function requireEmptyTarget(client: PoolClient, schema: string): Promise<v
 }
 
 async function copyTable(source: PoolClient, target: PoolClient, from: string, to: string, table: string): Promise<number> {
-  // ponytail: one demo-sized table in memory; use pg_dump/restore for large databases.
-  const rows = await source.query(`SELECT row_to_json(t)::text AS record FROM ${identifier(from)}.${identifier(table)} t ORDER BY id`);
-  for (const { record } of rows.rows) {
-    const row = JSON.parse(record) as Record<string, unknown>;
-    const keys = Object.keys(row);
-    const fields = keys.map(identifier).join(", ");
-    const placeholders = keys.map((_, index) => `$${index + 1}`).join(", ");
-    await target.query(`INSERT INTO ${identifier(to)}.${identifier(table)} (${fields}) VALUES (${placeholders})`, keys.map(key => row[key]));
+  const sourceTable = `${identifier(from)}.${identifier(table)}`;
+  const targetTable = `${identifier(to)}.${identifier(table)}`;
+  let copied = 0;
+  let cursor: string | null = null;
+  for (;;) {
+    const page: { id: string; record: string }[] = cursor === null
+      ? (await source.query(
+          // fixmyslop-ignore[sec/sql-injection] sourceTable is identifier()-validated and quoted; the cursor is a bound parameter.
+          `SELECT id::text AS id, row_to_json(t)::text AS record FROM ${sourceTable} t ORDER BY id LIMIT $1`,
+          [batchSize],
+        )).rows
+      : (await source.query(
+          // fixmyslop-ignore[sec/sql-injection] sourceTable is identifier()-validated and quoted; cursor and limit are bound parameters.
+          `SELECT id::text AS id, row_to_json(t)::text AS record FROM ${sourceTable} t WHERE id > $1::uuid ORDER BY id LIMIT $2`,
+          [cursor, batchSize],
+        )).rows;
+    if (page.length === 0) break;
+
+    for (const { record } of page) {
+      const row = JSON.parse(record) as Record<string, unknown>;
+      const keys = Object.keys(row);
+      const fields = keys.map(identifier).join(", ");
+      const placeholders = keys.map((_, index) => `$${index + 1}`).join(", ");
+      // fixmyslop-ignore[sec/sql-injection] targetTable and column names are identifier()-validated and quoted; row values are bound parameters.
+      await target.query(`INSERT INTO ${targetTable} (${fields}) VALUES (${placeholders})`, keys.map(key => row[key]));
+    }
+
+    copied += page.length;
+    cursor = page[page.length - 1].id;
   }
-  if (await count(target, to, table) !== rows.rowCount) throw new Error(`Row count mismatch for ${table}`);
-  return rows.rowCount ?? 0;
+
+  if (await count(target, to, table) !== copied) throw new Error(`Row count mismatch for ${table}`);
+  return copied;
 }
 
 export async function copyDatabase(sourcePool: Pool, targetPool: Pool, from: string, to: string): Promise<Record<string, number> | null> {
@@ -61,6 +86,7 @@ export async function copyDatabase(sourcePool: Pool, targetPool: Pool, from: str
     await source.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
     await target.query("BEGIN");
     await target.query(`CREATE TABLE IF NOT EXISTS ${history} (id integer PRIMARY KEY CHECK (id = 1), completed_at timestamptz NOT NULL DEFAULT now())`);
+    // fixmyslop-ignore[sec/sql-injection] history is built from an identifier()-validated schema plus a fixed literal.
     if ((await target.query(`SELECT id FROM ${history}`)).rowCount) {
       await target.query("COMMIT");
       return null;
@@ -69,6 +95,7 @@ export async function copyDatabase(sourcePool: Pool, targetPool: Pool, from: str
     if (await count(source, from, "attachments")) throw new Error("Source contains files; migrate storage objects before copying the database");
     const counts: Record<string, number> = {};
     for (const table of tables) counts[table] = await copyTable(source, target, from, to, table);
+    // fixmyslop-ignore[sec/sql-injection] same identifier()-validated history table; the inserted value is a fixed literal.
     await target.query(`INSERT INTO ${history} (id) VALUES (1)`);
     await target.query("COMMIT");
     return counts;
