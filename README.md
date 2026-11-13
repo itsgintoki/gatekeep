@@ -2,7 +2,7 @@
 
 > **Encrypted Ephemeral Content Sharing Engine** — encrypted notes, passphrase-gated share links, atomic read limits, signed webhooks, and compound-indexed analytics.
 
-[Live app](https://gatekeep-6lhv.onrender.com) · [Health check](https://gatekeep-6lhv.onrender.com/health) · [Case study](https://itsgintoki.github.io/web/work/gatekeep.html) · [Source](https://github.com/itsgintoki/gatekeep)
+[Live app](https://gatekeep-6lhv.onrender.com) · [Health check](https://gatekeep-6lhv.onrender.com/health) · [Case study](https://anki.site/work/gatekeep.html) · [Source](https://github.com/itsgintoki/gatekeep)
 
 **Stack:** Node.js 22 · TypeScript · Express 5 · PostgreSQL + Drizzle · Supabase Storage · Docker · Render
 **Tests:** 24 unit + 8 integration (Node test runner, real PostgreSQL)
